@@ -13,15 +13,35 @@ const SUGGESTIONS = [
 ];
 
 const POLL_INTERVAL_MS = 2500;
+const STORAGE_KEY = 'finsight-chat';
+
+function loadMessages(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    return parsed.filter((m) => !m.pending);
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(messages: ChatMessage[]) {
+  try {
+    const toSave = messages.filter((m) => !m.pending);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  } catch { /* storage full or unavailable */ }
+}
 
 export function ChatPanel() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    saveMessages(messages);
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
