@@ -214,3 +214,20 @@ async def get_document_metrics(document_id: UUID):
         )
         for r in rows
     ]
+
+
+@router.delete("/{document_id}")
+async def delete_document(document_id: UUID):
+    """Delete a document and all derived data (chunks, tables, metrics).
+
+    Uses ON DELETE CASCADE so a single DELETE on documents removes everything.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM documents WHERE id = $1", document_id
+        )
+    # result is 'DELETE N' where N is rows affected
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"detail": "Document deleted"}

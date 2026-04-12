@@ -17,6 +17,7 @@ import asyncpg
 
 from app.db.connection import get_pool
 from app.services.chunking import chunk_pages
+from app.services.embedding import embed_texts
 from app.services.extraction import extract_pdf
 from app.services.metadata_detection import detect_metadata
 from app.services.metric_flattening import flatten_tables
@@ -53,7 +54,15 @@ async def process_document(document_id: UUID, pdf_path: str, filename: str) -> N
         metrics = flatten_tables(result.all_tables)
         logger.info(f"Flattened {len(metrics)} metrics")
 
-        # 5. Persist everything in one transaction
+        # 5. Generate embeddings for text chunks (FinBERT, lazy-loaded)
+        embeddings: list[list[float]] = []
+        if chunks:
+            chunk_texts = [c.text for c in chunks]
+            logger.info(f"Generating embeddings for {len(chunk_texts)} chunks...")
+            embeddings = embed_texts(chunk_texts)
+            logger.info(f"Generated {len(embeddings)} embeddings")
+
+        # 6. Persist everything in one transaction
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # Update document row with metadata + page count
@@ -77,8 +86,11 @@ async def process_document(document_id: UUID, pdf_path: str, filename: str) -> N
                     document_id,
                 )
 
-                # Insert text chunks (no embeddings yet — Phase 4)
+                # Insert text chunks with embeddings
                 if chunks:
+                    from pgvector.asyncpg import register_vector
+                    await register_vector(conn)
+
                     chunk_rows = [
                         (
                             document_id,
@@ -86,14 +98,15 @@ async def process_document(document_id: UUID, pdf_path: str, filename: str) -> N
                             chunk.page_num,
                             chunk.section,
                             chunk.chunk_index,
+                            embeddings[i] if i < len(embeddings) else None,
                         )
-                        for chunk in chunks
+                        for i, chunk in enumerate(chunks)
                     ]
                     await conn.executemany(
                         """
                         INSERT INTO text_chunks
-                            (document_id, chunk_text, page_num, section, chunk_index)
-                        VALUES ($1, $2, $3, $4, $5)
+                            (document_id, chunk_text, page_num, section, chunk_index, embedding)
+                        VALUES ($1, $2, $3, $4, $5, $6)
                         """,
                         chunk_rows,
                     )

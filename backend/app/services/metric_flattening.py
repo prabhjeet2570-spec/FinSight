@@ -1,13 +1,14 @@
 """Flatten extracted tables into a metrics table for fast SQL lookup.
 
 Takes structured table rows and pulls out the key financial line items,
-normalizing them to canonical metric names. The synonym dictionary in
-Phase 3's finance/synonyms.py will replace this hardcoded list.
+normalizing them to canonical metric names via the finance/synonyms.py
+synonym dictionary.
 """
 import logging
 import re
 from dataclasses import dataclass
 
+from app.finance.synonyms import match_metric
 from app.services.extraction import ExtractedTable
 
 logger = logging.getLogger(__name__)
@@ -24,60 +25,6 @@ class FlatMetric:
     prior_period: str | None
     page_num: int
     table_type: str | None
-
-
-# Canonical metric -> patterns matching how it appears in SEC filings.
-# This is a Phase 2 starter; Phase 3 expands this via finance/synonyms.py.
-METRIC_PATTERNS: dict[str, list[str]] = {
-    "revenue": [
-        r"^total\s+(?:net\s+)?(?:revenue|sales)$",
-        r"^net\s+(?:sales|revenue)$",
-        r"^(?:total\s+)?revenue$",
-    ],
-    "cost_of_revenue": [
-        r"^(?:total\s+)?cost\s+of\s+(?:sales|revenue|goods\s+sold)$",
-    ],
-    "gross_profit": [
-        r"^gross\s+profit$",
-        r"^gross\s+margin$",
-    ],
-    "operating_expenses": [
-        r"^total\s+operating\s+expenses$",
-        r"^operating\s+expenses$",
-    ],
-    "operating_income": [
-        r"^(?:total\s+)?operating\s+income$",
-        r"^income\s+from\s+operations$",
-    ],
-    "net_income": [
-        r"^net\s+income$",
-        r"^net\s+earnings$",
-    ],
-    "eps_basic": [
-        r"^basic\s+(?:earnings\s+per\s+share|eps)$",
-    ],
-    "eps_diluted": [
-        r"^diluted\s+(?:earnings\s+per\s+share|eps)$",
-    ],
-    "total_assets": [
-        r"^total\s+assets$",
-    ],
-    "total_liabilities": [
-        r"^total\s+liabilities$",
-    ],
-    "stockholders_equity": [
-        r"^(?:total\s+)?(?:stockholders|shareholders)['']?\s+equity$",
-    ],
-    "cash_and_equivalents": [
-        r"^cash\s+and\s+cash\s+equivalents$",
-    ],
-}
-
-# Compile patterns once
-_compiled_patterns: dict[str, list[re.Pattern]] = {
-    metric: [re.compile(p, re.IGNORECASE) for p in patterns]
-    for metric, patterns in METRIC_PATTERNS.items()
-}
 
 
 # ---------- Number parsing ----------
@@ -111,17 +58,12 @@ def parse_number(s: str | None) -> float | None:
 
 
 def _match_metric(label: str) -> str | None:
-    """Match a row label to a canonical metric name."""
-    label_clean = label.strip().lower()
-    # Strip common trailing punctuation/notes
-    label_clean = re.sub(r"[\(\[].*?[\)\]]", "", label_clean).strip()
-    label_clean = label_clean.rstrip(":").strip()
+    """Match a row label to a canonical metric name.
 
-    for canonical, patterns in _compiled_patterns.items():
-        for pattern in patterns:
-            if pattern.match(label_clean):
-                return canonical
-    return None
+    Delegates to finance.synonyms.match_metric which has the full
+    synonym dictionary (~48 canonical metrics).
+    """
+    return match_metric(label)
 
 
 # ---------- Period detection ----------
