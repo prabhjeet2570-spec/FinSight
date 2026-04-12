@@ -14,6 +14,7 @@ from google import genai
 from app.config import get_settings
 from app.models.query import Citation
 from app.services.retrieval import RetrievalResult
+from app.services.sentiment import AggregatedSentiment
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,11 @@ specifically what to upload for that analysis.
 """
 
 
-def _build_context(result: RetrievalResult, classification: dict) -> str:
+def _build_context(
+    result: RetrievalResult,
+    classification: dict,
+    sentiment: AggregatedSentiment | None = None,
+) -> str:
     """Assemble retrieval results into a context block for the LLM."""
     sections = []
 
@@ -76,6 +81,32 @@ def _build_context(result: RetrievalResult, classification: dict) -> str:
                 parts.append(f"| Change: {direction}{r.change_pct:.1f}%")
             parts.append(f"({r.description})")
             lines.append(" ".join(parts))
+        sections.append("\n".join(lines))
+
+    # Sentiment analysis
+    if sentiment and sentiment.analyzed_chunks > 0:
+        lines = ["## FinBERT Sentiment Analysis (MD&A)"]
+        lines.append(
+            f"Overall tone: **{sentiment.overall}** "
+            f"(positive: {sentiment.positive_score:.1%}, "
+            f"negative: {sentiment.negative_score:.1%}, "
+            f"neutral: {sentiment.neutral_score:.1%}) "
+            f"— analyzed {sentiment.analyzed_chunks} text passages"
+        )
+        # Show per-chunk breakdown for the most opinionated passages
+        notable = sorted(
+            sentiment.chunk_scores,
+            key=lambda s: max(s.positive, s.negative),
+            reverse=True,
+        )[:5]
+        if notable:
+            lines.append("")
+            lines.append("Notable passages:")
+            for s in notable:
+                lines.append(
+                    f"- [{s.label}] (pos={s.positive:.0%} neg={s.negative:.0%}) "
+                    f'"{s.text_preview}..."'
+                )
         sections.append("\n".join(lines))
 
     # Text chunks
@@ -181,6 +212,7 @@ async def generate_answer(
     question: str,
     retrieval_result: RetrievalResult,
     classification: dict,
+    sentiment: AggregatedSentiment | None = None,
 ) -> dict:
     """Generate a grounded answer from retrieval results using Gemini Flash.
 
@@ -188,12 +220,13 @@ async def generate_answer(
         question: the user's original question
         retrieval_result: chunks + metrics + ratios from hybrid retrieval
         classification: output from classify_query
+        sentiment: FinBERT sentiment analysis results (for SENTIMENT queries)
 
     Returns:
         dict with keys: answer, citations, query_type, confidence,
-        metrics_used, ratios_computed
+        metrics_used, ratios_computed, sentiment
     """
-    context = _build_context(retrieval_result, classification)
+    context = _build_context(retrieval_result, classification, sentiment)
     citations = _build_citations(retrieval_result)
     confidence = _assess_confidence(retrieval_result, classification)
 
@@ -210,6 +243,7 @@ async def generate_answer(
             "confidence": "low",
             "metrics_used": None,
             "ratios_computed": None,
+            "sentiment": None,
         }
 
     user_prompt = f"""## Context from uploaded documents
@@ -269,6 +303,16 @@ Answer the question using ONLY the context above. Cite sources with [Page N] or 
             for r in retrieval_result.ratios
         ]
 
+    sentiment_data = None
+    if sentiment and sentiment.analyzed_chunks > 0:
+        sentiment_data = {
+            "overall": sentiment.overall,
+            "positive_score": sentiment.positive_score,
+            "negative_score": sentiment.negative_score,
+            "neutral_score": sentiment.neutral_score,
+            "analyzed_chunks": sentiment.analyzed_chunks,
+        }
+
     return {
         "answer": answer,
         "citations": citations,
@@ -276,4 +320,5 @@ Answer the question using ONLY the context above. Cite sources with [Page N] or 
         "confidence": confidence,
         "metrics_used": metrics_used,
         "ratios_computed": ratios_computed,
+        "sentiment": sentiment_data,
     }

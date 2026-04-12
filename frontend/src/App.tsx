@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 import { ChatPanel } from './components/ChatPanel';
 import { DocumentList } from './components/DocumentList';
@@ -6,20 +6,44 @@ import { UploadZone } from './components/UploadZone';
 import { api } from './lib/api';
 import type { DocumentResponse } from './types';
 
+type BackendState = 'waking' | 'ready' | 'error';
+
 function App() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [backend, setBackend] = useState<BackendState>('waking');
+  const retryRef = useRef(0);
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const docs = await api.listDocuments();
-        setDocuments(docs);
-      } catch {
-        setLoadError('Could not reach the FinSight backend. Make sure it is running on port 8000.');
+    let cancelled = false;
+
+    const boot = async () => {
+      while (!cancelled) {
+        try {
+          await api.health();
+          if (cancelled) return;
+          // Backend is up — load documents
+          const docs = await api.listDocuments();
+          if (!cancelled) {
+            setDocuments(docs);
+            setBackend('ready');
+          }
+          return;
+        } catch {
+          retryRef.current += 1;
+          if (retryRef.current > 20) {
+            if (!cancelled) setBackend('error');
+            return;
+          }
+          // Exponential backoff: 1s, 2s, 3s... capped at 5s
+          const delay = Math.min(retryRef.current * 1000, 5000);
+          await new Promise((r) => setTimeout(r, delay));
+        }
       }
-    })();
+    };
+
+    void boot();
+    return () => { cancelled = true; };
   }, []);
 
   const handleUploaded = useCallback((newDocs: DocumentResponse[]) => {
@@ -61,6 +85,18 @@ function App() {
         <p className="tagline">Grounded financial intelligence for SEC filings</p>
       </header>
 
+      {backend === 'waking' && (
+        <div className="wake-banner">
+          Waking up the server — free tier spins down after 15 min of inactivity...
+        </div>
+      )}
+
+      {backend === 'error' && (
+        <div className="wake-banner wake-error">
+          Could not reach the FinSight backend. Make sure it is running on port 8000.
+        </div>
+      )}
+
       <main className="main-grid">
         <aside className="docs-pane">
           <section className="pane-section">
@@ -69,17 +105,13 @@ function App() {
           </section>
 
           <section className="pane-section docs-list-section">
-            {loadError ? (
-              <p className="docs-empty error-text">{loadError}</p>
-            ) : (
-              <DocumentList
-                documents={documents}
-                selectedIds={selectedIds}
-                onToggleSelect={handleToggleSelect}
-                onDelete={handleDelete}
-                onStatusUpdate={handleStatusUpdate}
-              />
-            )}
+            <DocumentList
+              documents={documents}
+              selectedIds={selectedIds}
+              onToggleSelect={handleToggleSelect}
+              onDelete={handleDelete}
+              onStatusUpdate={handleStatusUpdate}
+            />
           </section>
         </aside>
 

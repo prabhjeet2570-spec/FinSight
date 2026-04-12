@@ -394,7 +394,8 @@ finsight/
 │   │   │   ├── metric_flattening.py  # Tables -> metrics rows
 │   │   │   ├── retrieval.py          # Vector search + SQL lookup + ratio compute
 │   │   │   ├── classifier.py         # Gemini Flash query classifier
-│   │   │   └── generation.py         # Gemini Flash grounded answer generation
+│   │   │   ├── generation.py         # Gemini Flash grounded answer generation
+│   │   │   └── sentiment.py          # FinBERT sentiment on MD&A chunks
 │   │   ├── finance/             # Financial domain knowledge
 │   │   │   ├── synonyms.py      # Metric synonym dictionary (~60 entries)
 │   │   │   ├── jargon.py        # Financial jargon map (~30 entries)
@@ -513,17 +514,17 @@ finsight/
 - [x] `lib/api.ts` fetch wrapper with `ApiError` class
 - **Test:** `tsc -b && vite build` clean, dev server boots and serves 200. Live browser flow still requires manual verification with running backend.
 
-### Phase 7: Sentiment + Deploy
-**Goal:** FinBERT sentiment on MD&A, multi-doc verification, deployed live at $0
+### Phase 7: Sentiment + Deploy ✅
+**Goal:** FinBERT sentiment on MD&A, deployed live at $0
 
-- [ ] FinBERT sentiment service on MD&A chunks — combine quantitative YoY signals with qualitative tone scores
-- [ ] Multi-document cross-doc query verification (currently supported via `document_ids` but untested with multiple periods)
-- [ ] End-to-end test against live Neon database
-- [ ] Backend Dockerfile + Render deployment (env vars: DATABASE_URL, GEMINI_API_KEY, FRONTEND_URL)
-- [ ] Frontend deployment to Vercel (env: VITE_API_URL)
-- [ ] CORS configuration for production domains
-- [ ] Cold-start UX handling in frontend ("waking up the server…")
-- **Test:** Full flow on live deployed URL. Upload a 10-Q, ask narrative + numerical + sentiment questions, verify citations.
+- [x] FinBERT sentiment service (`app/services/sentiment.py`) — `AutoModelForSequenceClassification` on MD&A chunks, per-chunk + aggregated positive/negative/neutral scores
+- [x] Sentiment integrated into SENTIMENT query type — runs on retrieved chunks, injects analysis into generation context, returns scores in response
+- [x] Sentiment displayed in frontend — tag in response metadata showing overall tone + confidence percentage
+- [x] Backend Dockerfile for Render — CPU-only torch, slim Python 3.12
+- [x] CORS configuration for production — comma-separated `FRONTEND_URL` env var for multiple origins
+- [x] Cold-start UX in frontend — health-check polling with backoff, "waking up the server" banner
+- [x] Cleaned up config — removed unused `sec_edgar_user_agent`, updated `.env.example`
+- **Remaining (manual):** Render deployment, Vercel deployment, Neon database setup, end-to-end test on live URL, multi-doc cross-period testing
 
 ---
 
@@ -587,6 +588,13 @@ These decisions have been discussed and confirmed. Don't re-debate them in futur
 
 ## Current Status
 
-**Phase:** Phase 6 complete. Phases 1–6 done; Phase 7 (sentiment + deploy) is the only remaining work.
+**Phase:** All 7 phases complete (code-side). Deployment is the remaining manual step.
 
-**Next step:** Commit Phase 6 frontend, then Phase 7 — FinBERT sentiment service on MD&A chunks, end-to-end test against live Neon DB, and deployment to Render + Vercel.
+**What's done:** Full pipeline — PDF upload + dual-path extraction, financial intelligence layer (synonyms + jargon + ratios), FinBERT embeddings + hybrid retrieval, query classification + grounded generation, FinBERT sentiment on MD&A, React frontend with cold-start handling, Dockerfile for Render.
+
+**What's left (manual):**
+1. Deploy backend to Render (Docker, set `DATABASE_URL`, `GEMINI_API_KEY`, `FRONTEND_URL`)
+2. Deploy frontend to Vercel (set `VITE_API_URL` to Render URL)
+3. Run `schema.sql` on production Neon database
+4. End-to-end test on live URL with a real 10-Q
+5. Multi-document cross-period testing

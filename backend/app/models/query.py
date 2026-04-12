@@ -19,6 +19,14 @@ class Citation(BaseModel):
     detail: str | None = None  # e.g. "gross_margin = 46.81%"
 
 
+class SentimentResponse(BaseModel):
+    overall: str  # "positive", "negative", "neutral"
+    positive_score: float
+    negative_score: float
+    neutral_score: float
+    analyzed_chunks: int
+
+
 class QueryResponse(BaseModel):
     answer: str
     citations: list[Citation] = []
@@ -26,3 +34,4 @@ class QueryResponse(BaseModel):
     confidence: str  # "high", "medium", "low"
     metrics_used: list[dict] | None = None  # key metrics referenced
     ratios_computed: list[dict] | None = None  # ratios computed for the answer
+    sentiment: SentimentResponse | None = None  # FinBERT sentiment (SENTIMENT queries)

@@ -76,6 +76,14 @@ export interface RatioComputed {
   format: string;
 }
 
+export interface SentimentResult {
+  overall: 'positive' | 'negative' | 'neutral';
+  positive_score: number;
+  negative_score: number;
+  neutral_score: number;
+  analyzed_chunks: number;
+}
+
 export interface QueryResponse {
   answer: string;
   citations: Citation[];
@@ -83,6 +91,7 @@ export interface QueryResponse {
   confidence: Confidence;
   metrics_used: MetricUsed[] | null;
   ratios_computed: RatioComputed[] | null;
+  sentiment: SentimentResult | null;
 }
 
 export interface ChatMessage {

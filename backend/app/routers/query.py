@@ -16,6 +16,7 @@ from app.models.query import QueryRequest, QueryResponse
 from app.services.classifier import classify_query
 from app.services.generation import generate_answer
 from app.services.retrieval import hybrid_retrieve
+from app.services.sentiment import analyze_sentiment
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +99,25 @@ async def query_documents(req: QueryRequest):
         f"{len(retrieval_result.ratios)} ratios"
     )
 
-    # Step 4: Generate
+    # Step 4: Sentiment analysis (for SENTIMENT queries)
+    sentiment_result = None
+    if query_type == "SENTIMENT" and retrieval_result.chunks:
+        chunk_texts = [c.text for c in retrieval_result.chunks]
+        sentiment_result = analyze_sentiment(chunk_texts)
+        logger.info(
+            f"Sentiment: {sentiment_result.overall} "
+            f"(pos={sentiment_result.positive_score:.2f}, "
+            f"neg={sentiment_result.negative_score:.2f}, "
+            f"neu={sentiment_result.neutral_score:.2f}) "
+            f"over {sentiment_result.analyzed_chunks} chunks"
+        )
+
+    # Step 5: Generate
     result = await generate_answer(
         question=req.question,
         retrieval_result=retrieval_result,
         classification=classification,
+        sentiment=sentiment_result,
     )
 
     return QueryResponse(**result)

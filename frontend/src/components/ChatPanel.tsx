@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import type { ChatMessage, Citation, DocumentResponse, QueryResponse } from '../types';
+import type { ChatMessage, Citation, DocumentResponse, QueryResponse, SentimentResult } from '../types';
 
 interface Props {
   documents: DocumentResponse[];
@@ -183,7 +183,31 @@ function ResponseMeta({ response }: { response: QueryResponse }) {
     <div className="msg-meta">
       <span className={`tag tag-${response.confidence}`}>{response.confidence} confidence</span>
       <span className="tag tag-type">{response.query_type}</span>
+      {response.sentiment && (
+        <SentimentTag sentiment={response.sentiment} />
+      )}
     </div>
+  );
+}
+
+function SentimentTag({ sentiment }: { sentiment: SentimentResult }) {
+  const cls =
+    sentiment.overall === 'positive'
+      ? 'tag-high'
+      : sentiment.overall === 'negative'
+        ? 'tag-low'
+        : 'tag-type';
+  const pct = Math.round(
+    (sentiment.overall === 'positive'
+      ? sentiment.positive_score
+      : sentiment.overall === 'negative'
+        ? sentiment.negative_score
+        : sentiment.neutral_score) * 100,
+  );
+  return (
+    <span className={`tag ${cls}`} title={`${sentiment.analyzed_chunks} passages analyzed`}>
+      {sentiment.overall} {pct}%
+    </span>
   );
 }
 
