@@ -1,13 +1,13 @@
 """Text chunking using LangChain's RecursiveCharacterTextSplitter.
 
 We use just this one utility from LangChain — not the whole framework.
-Chunks preserve page numbers and section context for citation purposes.
+Chunks preserve the SEC section name and synthetic page number for citations.
 """
 from dataclasses import dataclass
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from app.services.extraction import ExtractedPage
+from app.services.html_extraction import ExtractedSection
 
 
 @dataclass
@@ -31,23 +31,22 @@ _splitter = RecursiveCharacterTextSplitter(
 )
 
 
-def chunk_pages(pages: list[ExtractedPage]) -> list[TextChunk]:
-    """Split each page's text into chunks while preserving page/section metadata."""
+def chunk_sections(sections: list[ExtractedSection]) -> list[TextChunk]:
+    """Split each extracted section's text into chunks, preserving metadata."""
     all_chunks: list[TextChunk] = []
     chunk_idx = 0
 
-    for page in pages:
-        if not page.text or not page.text.strip():
+    for sec in sections:
+        if not sec.text or not sec.text.strip():
             continue
 
-        page_chunks = _splitter.split_text(page.text)
-        for chunk_text in page_chunks:
+        for chunk_text in _splitter.split_text(sec.text):
             if not chunk_text.strip():
                 continue
             all_chunks.append(TextChunk(
                 text=chunk_text,
-                page_num=page.page_num,
-                section=page.section,
+                page_num=sec.page_num,
+                section=sec.section,
                 chunk_index=chunk_idx,
             ))
             chunk_idx += 1

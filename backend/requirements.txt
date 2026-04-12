@@ -4,10 +4,12 @@ asyncpg==0.30.0
 pydantic-settings==2.8.1
 python-multipart==0.0.20
 pgvector==0.3.6
-pdfplumber==0.11.6
 langchain-text-splitters==0.3.8
 sentence-transformers==3.4.1
-google-genai==1.14.0
+openai==2.31.0
 
-# test/dev only
-reportlab==4.4.10
+# SEC EDGAR fetch + HTML/XBRL extraction
+edgartools==5.28.5
+beautifulsoup4==4.12.3
+lxml==5.3.0
+httpx==0.28.1

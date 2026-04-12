@@ -1,4 +1,4 @@
-"""Grounded answer generation using Gemini Flash.
+"""Grounded answer generation using Groq (Llama 3.3 70B).
 
 Takes retrieval results (text chunks, metrics, computed ratios) and
 generates a strictly grounded answer. The system prompt enforces:
@@ -7,9 +7,10 @@ generates a strictly grounded answer. The system prompt enforces:
   - Say "I don't have this information" if context is insufficient
   - Never hallucinate or speculate beyond the data
 """
+import asyncio
 import logging
 
-from google import genai
+from openai import AsyncOpenAI, RateLimitError
 
 from app.config import get_settings
 from app.models.query import Citation
@@ -20,23 +21,23 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
 You are FinSight, a financial analysis assistant. You answer questions about \
-SEC filings (10-Q, 10-K) that users have uploaded.
+SEC filings (10-Q, 10-K) fetched on demand from SEC EDGAR.
 
 ## Rules — follow these strictly:
 
 1. Answer ONLY from the context provided below. Do not use outside knowledge.
 2. If the context does not contain enough information to answer, say: \
-"I don't have enough information in the uploaded documents to answer this."
-3. Cite your sources inline using [Page N] for text references and \
-[Metric: name] for numerical data.
+"I don't have enough information in this filing to answer that."
+3. Do NOT add inline citations like [Page N] or [Metric: name] in your answer. \
+Citations are handled separately by the system.
 4. When presenting numbers, include the unit (e.g., "$94.0 billion", "46.8%").
 5. When a computed ratio is available, present it with its formula context \
 (e.g., "Gross margin is 46.8% (gross profit / revenue)").
 6. For sentiment or outlook questions, ground your assessment in specific \
-quotes or metric trends from the documents. Never speculate.
+quotes or metric trends from the filing. Never speculate.
 7. Be concise. Lead with the direct answer, then supporting detail.
-8. If the user asks about data from documents they haven't uploaded, tell them \
-specifically what to upload for that analysis.
+8. If the user asks about a metric that isn't present in the filing, say so \
+plainly — don't infer or estimate.
 """
 
 
@@ -44,15 +45,31 @@ def _build_context(
     result: RetrievalResult,
     classification: dict,
     sentiment: AggregatedSentiment | None = None,
+    filing_ticker_map: dict | None = None,
 ) -> str:
-    """Assemble retrieval results into a context block for the LLM."""
+    """Assemble retrieval results into a context block for the LLM.
+
+    When filing_ticker_map is provided and has 2+ companies, metrics,
+    ratios, and chunks are grouped by company ticker so the LLM can
+    attribute data correctly in comparison queries.
+    """
+    ftm = filing_ticker_map or {}
+    multi_company = len(set(ftm.values())) >= 2
     sections = []
+
+    def _ticker_tag(filing_id) -> str:
+        """Return '[AAPL] ' prefix when in multi-company mode."""
+        if not multi_company or filing_id is None:
+            return ""
+        ticker = ftm.get(filing_id, "")
+        return f"[{ticker}] " if ticker else ""
 
     # Metrics
     if result.metrics:
         lines = ["## Extracted Metrics"]
         for m in result.metrics:
-            parts = [f"**{m.metric_name}**: {m.value}"]
+            tag = _ticker_tag(m.filing_id)
+            parts = [f"{tag}**{m.metric_name}**: {m.value}"]
             if m.unit:
                 parts.append(f"({m.unit})")
             if m.prior_value is not None:
@@ -71,8 +88,9 @@ def _build_context(
     if result.ratios:
         lines = ["## Computed Ratios"]
         for r in result.ratios:
+            tag = _ticker_tag(r.filing_id)
             val_str = f"{r.value:.2f}%" if r.format == "percentage" else f"{r.value:.2f}"
-            parts = [f"**{r.display_name}**: {val_str}"]
+            parts = [f"{tag}**{r.display_name}**: {val_str}"]
             if r.prior_value is not None:
                 prior_str = f"{r.prior_value:.2f}%" if r.format == "percentage" else f"{r.prior_value:.2f}"
                 parts.append(f"| Prior: {prior_str}")
@@ -111,9 +129,10 @@ def _build_context(
 
     # Text chunks
     if result.chunks:
-        lines = ["## Relevant Document Excerpts"]
+        lines = ["## Relevant Filing Excerpts"]
         for i, chunk in enumerate(result.chunks, 1):
-            header = f"### Excerpt {i}"
+            tag = _ticker_tag(chunk.filing_id)
+            header = f"### {tag}Excerpt {i}"
             if chunk.page_num is not None:
                 header += f" [Page {chunk.page_num}]"
             if chunk.section:
@@ -125,7 +144,7 @@ def _build_context(
         sections.append("\n".join(lines))
 
     if not sections:
-        return "No relevant information found in the uploaded documents."
+        return "No relevant information found in the fetched filings."
 
     return "\n\n".join(sections)
 
@@ -140,7 +159,7 @@ def _build_citations(result: RetrievalResult) -> list[Citation]:
             detail += f" {m.unit}"
         citations.append(Citation(
             source_type="metric",
-            document_id=m.document_id,
+            filing_id=m.filing_id,
             page_num=m.page_num,
             metric_name=m.metric_name,
             detail=detail,
@@ -157,7 +176,7 @@ def _build_citations(result: RetrievalResult) -> list[Citation]:
     for chunk in result.chunks:
         citations.append(Citation(
             source_type="text_chunk",
-            document_id=chunk.document_id,
+            filing_id=chunk.filing_id,
             page_num=chunk.page_num,
             section=chunk.section,
             detail=chunk.text[:120] + "..." if len(chunk.text) > 120 else chunk.text,
@@ -203,9 +222,12 @@ def _assess_confidence(result: RetrievalResult, classification: dict) -> str:
     return "low"
 
 
-def _get_client() -> genai.Client:
+def _get_client() -> AsyncOpenAI:
     settings = get_settings()
-    return genai.Client(api_key=settings.gemini_api_key)
+    return AsyncOpenAI(
+        api_key=settings.groq_api_key,
+        base_url="https://api.groq.com/openai/v1",
+    )
 
 
 async def generate_answer(
@@ -213,20 +235,22 @@ async def generate_answer(
     retrieval_result: RetrievalResult,
     classification: dict,
     sentiment: AggregatedSentiment | None = None,
+    filing_ticker_map: dict | None = None,
 ) -> dict:
-    """Generate a grounded answer from retrieval results using Gemini Flash.
+    """Generate a grounded answer from retrieval results using Llama 3.3 70B (Groq).
 
     Args:
         question: the user's original question
         retrieval_result: chunks + metrics + ratios from hybrid retrieval
         classification: output from classify_query
         sentiment: FinBERT sentiment analysis results (for SENTIMENT queries)
+        filing_ticker_map: {filing_id: ticker} for multi-company attribution
 
     Returns:
         dict with keys: answer, citations, query_type, confidence,
         metrics_used, ratios_computed, sentiment
     """
-    context = _build_context(retrieval_result, classification, sentiment)
+    context = _build_context(retrieval_result, classification, sentiment, filing_ticker_map)
     citations = _build_citations(retrieval_result)
     confidence = _assess_confidence(retrieval_result, classification)
 
@@ -234,9 +258,9 @@ async def generate_answer(
     if not retrieval_result.chunks and not retrieval_result.metrics:
         return {
             "answer": (
-                "I don't have enough information in the uploaded documents to answer this. "
-                "Make sure you've uploaded relevant SEC filings (10-Q or 10-K) and that "
-                "they've finished processing."
+                "I couldn't find anything relevant in the SEC filings I fetched for "
+                "this question. Try rephrasing — for example, ask about a specific "
+                "metric, section (Risk Factors, MD&A), or time period."
             ),
             "citations": [],
             "query_type": classification.get("query_type", "MIXED"),
@@ -246,7 +270,7 @@ async def generate_answer(
             "sentiment": None,
         }
 
-    user_prompt = f"""## Context from uploaded documents
+    user_prompt = f"""## Context from SEC filings
 
 {context}
 
@@ -254,20 +278,35 @@ async def generate_answer(
 
 {question}
 
-Answer the question using ONLY the context above. Cite sources with [Page N] or [Metric: name]."""
+Answer the question using ONLY the context above. Do not add inline citations."""
 
     client = _get_client()
 
-    try:
-        response = await client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                {"role": "user", "parts": [{"text": SYSTEM_PROMPT + "\n\n" + user_prompt}]},
-            ],
-        )
-        answer = response.text.strip()
-    except Exception as e:
-        logger.error(f"Gemini generation failed: {e}")
+    answer = None
+    for attempt in range(3):
+        try:
+            response = await client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.2,
+            )
+            answer = response.choices[0].message.content.strip()
+            break
+        except RateLimitError:
+            if attempt < 2:
+                logger.warning(f"Groq rate limited (attempt {attempt + 1}), retrying...")
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            logger.error("Groq generation rate limited after retries")
+            break
+        except Exception as e:
+            logger.error(f"Groq generation failed: {e}")
+            break
+
+    if answer is None:
         answer = (
             "I encountered an error generating the answer. "
             "The retrieval was successful — here's what I found:\n\n"

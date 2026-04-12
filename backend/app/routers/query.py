@@ -1,123 +1,163 @@
-"""Query endpoint — the core RAG pipeline.
+"""Query endpoint — the public entry point for the RAG pipeline.
 
-Pipeline: question -> classify -> retrieve -> generate -> respond
-
-1. Classify the query (Gemini Flash) -> type + target metrics + section hint
-2. Resolve financial jargon -> expand metric names via synonym dict
-3. Retrieve context (hybrid: vector search + structured SQL + ratio computation)
-4. Generate grounded answer (Gemini Flash) with citations
+Phase 10 dispatch:
+  - Classify the question and extract company tickers in one Groq call.
+  - Resolve tickers to CompanyInfo (cache-first, edgartools fallback).
+  - Build a filing plan (one filing per company; cache-checked per accession).
+  - If every filing is already cached: run the pipeline synchronously and
+    return 200 with a full QueryResponse.
+  - If any filing needs ingestion: create a job, kick off run_query_job as
+    a background task, and return 202 with the job_id. The frontend polls
+    GET /api/query/jobs/{id} until status is 'ready' or 'failed'.
 """
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi.responses import JSONResponse
 
-from app.db.connection import get_pool
-from app.models.query import QueryRequest, QueryResponse
+from app.models.query import (
+    QueryJobAccepted,
+    QueryJobStatus,
+    QueryRequest,
+    QueryResponse,
+)
 from app.services.classifier import classify_query
-from app.services.generation import generate_answer
-from app.services.retrieval import hybrid_retrieve
-from app.services.sentiment import analyze_sentiment
+from app.services.entity_resolution import resolve_entities
+from app.services.filing_resolver import resolve_filings
+from app.services.job_queue import create_job, get_job
+from app.services.query_pipeline import run_query, run_query_job
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["query"])
 
 
-@router.post("/query", response_model=QueryResponse)
-async def query_documents(req: QueryRequest):
-    """Ask a question about uploaded documents.
+def _no_company_response(question: str) -> QueryResponse:
+    return QueryResponse(
+        answer=(
+            "I couldn't identify a public company in your question. "
+            "Try asking about a specific US public company by name or ticker — "
+            "for example: 'How is Apple doing?' or 'What are NVIDIA's risk factors?'"
+        ),
+        citations=[],
+        query_type="NARRATIVE",
+        confidence="low",
+        companies_resolved=[],
+        filings_used=[],
+    )
 
-    The pipeline:
-      1. Classify the query (what type? what metrics? what section?)
-      2. Run hybrid retrieval (vector search + structured metric lookup)
-      3. Compute financial ratios from retrieved metrics
-      4. Generate a grounded answer with Gemini Flash
-      5. Return answer + citations + metadata
+
+def _unresolved_response(unresolved: list[str]) -> QueryResponse:
+    joined = ", ".join(f"'{s}'" for s in unresolved)
+    return QueryResponse(
+        answer=(
+            f"I couldn't find {joined} on SEC EDGAR. Make sure you're asking about "
+            "a US public company that files with the SEC."
+        ),
+        citations=[],
+        query_type="NARRATIVE",
+        confidence="low",
+        companies_resolved=[],
+        filings_used=[],
+    )
+
+
+def _no_filings_response(unresolved_tickers: list[str]) -> QueryResponse:
+    joined = ", ".join(unresolved_tickers)
+    return QueryResponse(
+        answer=(
+            f"I found {joined} on SEC EDGAR but couldn't locate a recent 10-Q or 10-K "
+            "to answer this question."
+        ),
+        citations=[],
+        query_type="NARRATIVE",
+        confidence="low",
+        companies_resolved=[],
+        filings_used=[],
+    )
+
+
+@router.post(
+    "/query",
+    response_model=QueryResponse,
+    responses={202: {"model": QueryJobAccepted}},
+)
+async def query_endpoint(req: QueryRequest, background_tasks: BackgroundTasks):
+    """Ask a question about any US public company.
+
+    Returns 200 with a QueryResponse on cache hit, or 202 with a
+    QueryJobAccepted (job_id) when one or more filings need to be
+    ingested from SEC EDGAR.
     """
-    pool = await get_pool()
+    logger.info(f"Query: {req.question[:80]}")
 
-    # Validate that requested documents exist (if specific IDs provided)
-    if req.document_ids:
-        async with pool.acquire() as conn:
-            placeholders = ", ".join(f"${i+1}" for i in range(len(req.document_ids)))
-            count = await conn.fetchval(
-                f"SELECT count(*) FROM documents WHERE id IN ({placeholders})",
-                *req.document_ids,
-            )
-            if count != len(req.document_ids):
-                raise HTTPException(
-                    status_code=404,
-                    detail="One or more document IDs not found",
-                )
-            # Check if any are still processing
-            processing = await conn.fetchval(
-                f"SELECT count(*) FROM documents WHERE id IN ({placeholders}) AND status = 'processing'",
-                *req.document_ids,
-            )
-            if processing > 0:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"{processing} document(s) still processing. Please wait.",
-                )
-
-    # Step 1: Classify
-    logger.info(f"Classifying query: {req.question[:80]}...")
+    # 1. Classify + extract companies in one LLM call
     classification = await classify_query(req.question)
 
-    # Step 2: Determine retrieval parameters from classification
-    metric_names = classification.get("metrics") or None
-    section_hint = classification.get("section_hint")
+    company_strings = classification.get("companies") or []
+    if not company_strings:
+        return _no_company_response(req.question)
 
-    # For NUMERICAL queries, we want more metrics and fewer chunks
-    # For NARRATIVE queries, we want more chunks and skip metrics
-    query_type = classification["query_type"]
-    top_k = 5
-    if query_type == "NUMERICAL":
-        top_k = 2  # still get some text context
-    elif query_type == "NARRATIVE":
-        metric_names = None  # skip structured lookup
-        top_k = 8
-    elif query_type == "SENTIMENT":
-        top_k = 8  # sentiment needs more text passages
-        section_hint = section_hint or "MD&A"
+    # 2. Resolve tickers/names -> CompanyInfo (uses cache, falls back to EDGAR)
+    resolution = await resolve_entities(company_strings)
+    if not resolution.resolved:
+        return _unresolved_response(resolution.unresolved or company_strings)
 
-    # Step 3: Retrieve
+    # 3. Build a filing plan: which filings per company, which are cached
+    plan = await resolve_filings(
+        companies=resolution.resolved,
+        filings_needed=classification.get("filings_needed", [{"form": "10-Q", "count": 1}]),
+    )
+
+    if not plan.targets:
+        return _no_filings_response(plan.unresolved or [c.ticker for c in resolution.resolved])
+
+    # 4. Sync (cache hit) vs async (cache miss) dispatch
+    if not plan.needs_ingestion:
+        logger.info(f"Cache hit — running pipeline synchronously")
+        result = await run_query(req.question, classification, plan)
+        return QueryResponse(**result)
+
+    # Some filings need fetching from EDGAR — go async
+    job_id = await create_job()
     logger.info(
-        f"Retrieving: type={query_type}, metrics={metric_names}, "
-        f"section={section_hint}, top_k={top_k}"
+        f"Cache miss — created job {job_id[:8]} for "
+        f"{sum(1 for t in plan.targets if t.needs_ingestion)} ingestion(s)"
     )
-    retrieval_result = await hybrid_retrieve(
-        query=req.question,
-        document_ids=req.document_ids,
-        metric_names=metric_names,
-        section_filter=section_hint,
-        top_k_chunks=top_k,
+    background_tasks.add_task(run_query_job, job_id, req.question, classification, plan)
+
+    miss_count = sum(1 for t in plan.targets if t.needs_ingestion)
+    progress = (
+        f"Fetching {miss_count} filing(s) from SEC EDGAR — this takes 1-3 minutes per filing."
     )
-    logger.info(
-        f"Retrieved: {len(retrieval_result.chunks)} chunks, "
-        f"{len(retrieval_result.metrics)} metrics, "
-        f"{len(retrieval_result.ratios)} ratios"
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={"job_id": job_id, "status": "processing", "progress": progress},
     )
 
-    # Step 4: Sentiment analysis (for SENTIMENT queries)
-    sentiment_result = None
-    if query_type == "SENTIMENT" and retrieval_result.chunks:
-        chunk_texts = [c.text for c in retrieval_result.chunks]
-        sentiment_result = analyze_sentiment(chunk_texts)
-        logger.info(
-            f"Sentiment: {sentiment_result.overall} "
-            f"(pos={sentiment_result.positive_score:.2f}, "
-            f"neg={sentiment_result.negative_score:.2f}, "
-            f"neu={sentiment_result.neutral_score:.2f}) "
-            f"over {sentiment_result.analyzed_chunks} chunks"
-        )
 
-    # Step 5: Generate
-    result = await generate_answer(
-        question=req.question,
-        retrieval_result=retrieval_result,
-        classification=classification,
-        sentiment=sentiment_result,
+@router.get("/query/jobs/{job_id}", response_model=QueryJobStatus)
+async def get_query_job(job_id: str):
+    """Poll the status of an async query job.
+
+    Status values:
+      - pending     job created, work not yet started
+      - processing  background task is running (`progress` is human-readable)
+      - ready       finished — `result` is a full QueryResponse
+      - failed      finished with an error — `error` has the message
+    """
+    job = await get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+
+    result_payload = None
+    if job.result is not None:
+        result_payload = QueryResponse(**job.result)
+
+    return QueryJobStatus(
+        job_id=job.id,
+        status=job.status.value,
+        progress=job.progress,
+        result=result_payload,
+        error=job.error,
     )
-
-    return QueryResponse(**result)

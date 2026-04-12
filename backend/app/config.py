@@ -4,12 +4,10 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     database_url: str = ""
-    gemini_api_key: str = ""
+    groq_api_key: str = ""
 
-    # File upload limits
-    max_file_size_mb: int = 10
-    max_files: int = 4
-    max_total_size_mb: int = 40
+    # SEC EDGAR — required by SEC's fair-access policy. Format: "App Name email@domain.com"
+    edgar_user_agent: str = "FinSight prabhjeet@nyu.edu"
 
     # CORS — comma-separated origins for production
     frontend_url: str = "http://localhost:5173"

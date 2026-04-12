@@ -1,163 +1,144 @@
-"""Flatten extracted tables into a metrics table for fast SQL lookup.
+"""HTML table -> metric rows (XBRL fallback path).
 
-Takes structured table rows and pulls out the key financial line items,
-normalizing them to canonical metric names via the finance/synonyms.py
-synonym dictionary.
+When XBRL doesn't have a concept (some non-GAAP figures, smaller filers, or
+older 8-Ks), we fall back to parsing the income statement / balance sheet /
+cash flow tables ourselves.
+
+The orchestrator passes the metrics already extracted from XBRL alongside the
+HTML tables. We only emit a metric for canonical names that XBRL did not cover.
+
+Heuristic:
+  1. For each table row, treat the first non-empty cell as a label.
+  2. Match the label against the synonym dictionary -> canonical metric name.
+  3. Skip if XBRL already has that metric.
+  4. Find the first numeric cell in the row -> current value.
+  5. Find the second numeric cell -> prior_value (best-effort).
+  6. Compute change_pct.
+
+This is a fallback. XBRL is the preferred source — when it's available it
+gives clean tagged values with unambiguous units and periods.
 """
 import logging
 import re
 from dataclasses import dataclass
 
 from app.finance.synonyms import match_metric
-from app.services.extraction import ExtractedTable
+from app.services.html_extraction import ExtractedTable
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class FlatMetric:
+class HtmlMetric:
     metric_name: str
-    value: float | None
+    value: float
     prior_value: float | None
     change_pct: float | None
     unit: str
-    period: str | None
-    prior_period: str | None
-    page_num: int
+    page_num: int | None
     table_type: str | None
 
 
-# ---------- Number parsing ----------
-
-NUMBER_CLEAN_RE = re.compile(r"[^\d.\-]")
+_NUMBER_RE = re.compile(r"^[\(\-]?[\$]?\s*[\d,]+(?:\.\d+)?\s*\)?%?$")
 
 
-def parse_number(s: str | None) -> float | None:
-    """Parse a financial number string like '$1,234.5' or '(123)' to float."""
-    if s is None:
+def _parse_number(cell: str) -> float | None:
+    """Parse a financial table cell into a float, or None if not numeric.
+
+    Handles: '$1,234', '1,234.5', '(1,234)' (negative in parens),
+             '12.5%', '$ 1,234' (whitespace).
+    """
+    if not cell:
         return None
-    s = str(s).strip()
-    if not s or s in {"-", "—", "N/A", "n/a"}:
+    s = cell.strip().replace(",", "").replace("$", "").replace(" ", "")
+    if not s:
         return None
-
-    is_negative = False
-    # Parentheses indicate negative in financial statements
-    if s.startswith("(") and s.endswith(")"):
-        is_negative = True
+    is_negative_paren = s.startswith("(") and s.endswith(")")
+    if is_negative_paren:
         s = s[1:-1]
-
-    cleaned = NUMBER_CLEAN_RE.sub("", s)
-    if not cleaned or cleaned in {".", "-", "-."}:
-        return None
-
+    is_percent = s.endswith("%")
+    if is_percent:
+        s = s[:-1]
     try:
-        val = float(cleaned)
-        return -val if is_negative else val
+        val = float(s)
     except ValueError:
         return None
+    if is_negative_paren:
+        val = -val
+    return val
 
 
-def _match_metric(label: str) -> str | None:
-    """Match a row label to a canonical metric name.
+def _find_label_and_numbers(row: list[str]) -> tuple[str, list[float]] | None:
+    """Pick the row label (leftmost text) and all numeric cells (in order).
 
-    Delegates to finance.synonyms.match_metric which has the full
-    synonym dictionary (~48 canonical metrics).
+    Returns (label, [num1, num2, ...]) or None if the row has no usable label.
     """
-    return match_metric(label)
+    label = ""
+    label_idx = -1
+    for i, cell in enumerate(row):
+        c = cell.strip()
+        if c and not _NUMBER_RE.match(c.replace(" ", "")) and c not in {"$", "%"}:
+            label = c
+            label_idx = i
+            break
+    if not label:
+        return None
+
+    numbers: list[float] = []
+    for cell in row[label_idx + 1:]:
+        val = _parse_number(cell)
+        if val is not None:
+            numbers.append(val)
+
+    return label, numbers
 
 
-# ---------- Period detection ----------
+def flatten_html_tables(
+    tables: list[ExtractedTable],
+    skip_metrics: set[str] | None = None,
+) -> list[HtmlMetric]:
+    """Extract canonical metrics from HTML tables, skipping any in skip_metrics.
 
-def _classify_columns(headers: list[str]) -> tuple[int | None, int | None, str | None, str | None]:
-    """Identify which column is current period vs prior period.
+    Args:
+        tables: ExtractedTable list from html_extraction
+        skip_metrics: canonical metric names already covered by XBRL — don't
+                      duplicate them from HTML tables. Pass None to extract all.
 
-    Returns (current_idx, prior_idx, current_period, prior_period).
+    Returns:
+        List of HtmlMetric records ready to insert with source='html_table'.
     """
-    if not headers or len(headers) < 2:
-        return None, None, None, None
-
-    # Common patterns: "Three Months Ended ... 2025" / "... 2024"
-    period_re = re.compile(r"(20\d{2})")
-
-    column_periods: list[tuple[int, str]] = []
-    for i, header in enumerate(headers):
-        if not header:
-            continue
-        match = period_re.search(str(header))
-        if match:
-            column_periods.append((i, match.group(1)))
-
-    if len(column_periods) >= 2:
-        # Most recent year is "current"
-        sorted_periods = sorted(column_periods, key=lambda x: x[1], reverse=True)
-        return (
-            sorted_periods[0][0],
-            sorted_periods[1][0],
-            sorted_periods[0][1],
-            sorted_periods[1][1],
-        )
-    elif len(column_periods) == 1:
-        return column_periods[0][0], None, column_periods[0][1], None
-
-    # Fallback: use first non-label column as current
-    return 1 if len(headers) > 1 else None, None, None, None
-
-
-# ---------- Main flattening ----------
-
-def flatten_tables(tables: list[ExtractedTable]) -> list[FlatMetric]:
-    """Extract canonical metrics from a list of parsed tables."""
-    metrics: list[FlatMetric] = []
+    skip = skip_metrics or set()
+    seen: set[str] = set(skip)
+    out: list[HtmlMetric] = []
 
     for table in tables:
-        if not table.quality_ok:
-            continue
-
-        current_idx, prior_idx, current_period, prior_period = _classify_columns(table.headers)
-        if current_idx is None:
-            continue
-
-        # Convert column index to header key (rows are dicts keyed by header name)
-        value_keys = list(table.headers[1:])  # skip label column
-        if not value_keys:
-            continue
-
-        current_key = table.headers[current_idx] if current_idx < len(table.headers) else None
-        prior_key = table.headers[prior_idx] if prior_idx is not None and prior_idx < len(table.headers) else None
-
         for row in table.rows:
-            label = row.get("label", "")
-            metric_name = _match_metric(label)
-            if not metric_name:
+            parsed = _find_label_and_numbers(row)
+            if parsed is None:
+                continue
+            label, numbers = parsed
+            if not numbers:
                 continue
 
-            values_dict = row.get("values", {})
-            current_val = parse_number(values_dict.get(current_key)) if current_key else None
-            prior_val = parse_number(values_dict.get(prior_key)) if prior_key else None
+            canonical = match_metric(label)
+            if canonical is None or canonical in seen:
+                continue
 
-            change_pct = None
-            if current_val is not None and prior_val is not None and prior_val != 0:
-                change_pct = ((current_val - prior_val) / abs(prior_val)) * 100
+            current = numbers[0]
+            prior: float | None = numbers[1] if len(numbers) > 1 else None
+            change_pct: float | None = None
+            if prior is not None and prior != 0:
+                change_pct = round((current - prior) / abs(prior) * 100, 2)
 
-            metrics.append(FlatMetric(
-                metric_name=metric_name,
-                value=current_val,
-                prior_value=prior_val,
+            out.append(HtmlMetric(
+                metric_name=canonical,
+                value=current,
+                prior_value=prior,
                 change_pct=change_pct,
-                unit="millions USD",  # Phase 3 will detect this from headers
-                period=current_period,
-                prior_period=prior_period,
+                unit="USD",
                 page_num=table.page_num,
-                table_type=table.table_type,
+                table_type=None,
             ))
+            seen.add(canonical)
 
-    # Deduplicate: keep first occurrence of each (metric_name, period)
-    seen = set()
-    deduped = []
-    for m in metrics:
-        key = (m.metric_name, m.period)
-        if key not in seen:
-            seen.add(key)
-            deduped.append(m)
-
-    return deduped
+    return out

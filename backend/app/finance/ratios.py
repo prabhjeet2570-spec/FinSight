@@ -10,6 +10,7 @@ Each ratio definition specifies:
   - how to interpret the result
 """
 from dataclasses import dataclass
+from uuid import UUID
 
 
 @dataclass
@@ -32,6 +33,7 @@ class ComputedRatio:
     change_pct: float | None
     format: str
     description: str
+    filing_id: "UUID | None" = None
 
 
 # ---------- Ratio definitions ----------

@@ -7,8 +7,8 @@ Combines two retrieval paths:
   2. Structured lookup — search the metrics table by canonical metric name
      with synonym expansion. Best for numerical questions ("what was revenue?").
 
-The hybrid_retrieve function merges both paths, deduplicates, and ranks
-results for downstream generation.
+Both paths are scoped to a list of filing_ids — the caller (filing_resolver,
+Phase 10) decides which filings the query should run over.
 """
 import logging
 from dataclasses import dataclass, field
@@ -16,7 +16,6 @@ from uuid import UUID
 
 from app.db.connection import get_pool
 from app.finance.ratios import compute_all_ratios, ComputedRatio
-from app.finance.synonyms import get_synonyms_for_metric
 from app.services.embedding import embed_query
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 class ChunkResult:
     """A text chunk retrieved via vector similarity."""
     chunk_id: UUID
-    document_id: UUID
+    filing_id: UUID
     text: str
     page_num: int
     section: str | None
@@ -49,7 +48,7 @@ class MetricResult:
     prior_period: str | None
     page_num: int | None
     table_type: str | None
-    document_id: UUID
+    filing_id: UUID
 
     @property
     def source_type(self) -> str:
@@ -68,7 +67,7 @@ class RetrievalResult:
 
 async def search_chunks(
     query: str,
-    document_ids: list[UUID] | None = None,
+    filing_ids: list[UUID] | None = None,
     section_filter: str | None = None,
     top_k: int = 5,
 ) -> list[ChunkResult]:
@@ -79,23 +78,22 @@ async def search_chunks(
 
     Args:
         query: natural language question
-        document_ids: restrict to specific documents (None = search all)
+        filing_ids: restrict to specific filings (None = search all)
         section_filter: restrict to a SEC filing section (e.g., "MD&A")
         top_k: number of results to return
     """
     pool = await get_pool()
     query_embedding = embed_query(query)
 
-    # Build WHERE clause dynamically
     conditions = ["tc.embedding IS NOT NULL"]
     params: list = [query_embedding, top_k]
     param_idx = 3  # $1 = embedding, $2 = top_k
 
-    if document_ids:
-        placeholders = ", ".join(f"${param_idx + i}" for i in range(len(document_ids)))
-        conditions.append(f"tc.document_id IN ({placeholders})")
-        params.extend(document_ids)
-        param_idx += len(document_ids)
+    if filing_ids:
+        placeholders = ", ".join(f"${param_idx + i}" for i in range(len(filing_ids)))
+        conditions.append(f"tc.filing_id IN ({placeholders})")
+        params.extend(filing_ids)
+        param_idx += len(filing_ids)
 
     if section_filter:
         conditions.append(f"tc.section = ${param_idx}")
@@ -105,7 +103,7 @@ async def search_chunks(
     where_clause = " AND ".join(conditions)
 
     sql = f"""
-        SELECT tc.id, tc.document_id, tc.chunk_text, tc.page_num, tc.section,
+        SELECT tc.id, tc.filing_id, tc.chunk_text, tc.page_num, tc.section,
                1 - (tc.embedding <=> $1::vector) AS similarity
         FROM text_chunks tc
         WHERE {where_clause}
@@ -121,7 +119,7 @@ async def search_chunks(
     return [
         ChunkResult(
             chunk_id=row["id"],
-            document_id=row["document_id"],
+            filing_id=row["filing_id"],
             text=row["chunk_text"],
             page_num=row["page_num"],
             section=row["section"],
@@ -135,16 +133,16 @@ async def search_chunks(
 
 async def search_metrics(
     metric_names: list[str],
-    document_ids: list[UUID] | None = None,
+    filing_ids: list[UUID] | None = None,
 ) -> list[MetricResult]:
-    """Look up metrics by canonical name with synonym expansion.
+    """Look up metrics by canonical name.
 
     Searches the metrics table for exact matches on metric_name.
     The caller should resolve jargon and expand synonyms before calling this.
 
     Args:
         metric_names: canonical metric names to search for
-        document_ids: restrict to specific documents (None = search all)
+        filing_ids: restrict to specific filings (None = search all)
     """
     if not metric_names:
         return []
@@ -155,23 +153,22 @@ async def search_metrics(
     params: list = []
     param_idx = 1
 
-    # metric_name IN (...)
     placeholders = ", ".join(f"${param_idx + i}" for i in range(len(metric_names)))
     conditions.append(f"m.metric_name IN ({placeholders})")
     params.extend(metric_names)
     param_idx += len(metric_names)
 
-    if document_ids:
-        doc_placeholders = ", ".join(f"${param_idx + i}" for i in range(len(document_ids)))
-        conditions.append(f"m.document_id IN ({doc_placeholders})")
-        params.extend(document_ids)
-        param_idx += len(document_ids)
+    if filing_ids:
+        f_placeholders = ", ".join(f"${param_idx + i}" for i in range(len(filing_ids)))
+        conditions.append(f"m.filing_id IN ({f_placeholders})")
+        params.extend(filing_ids)
+        param_idx += len(filing_ids)
 
     where_clause = " AND ".join(conditions)
 
     sql = f"""
         SELECT m.metric_name, m.value, m.prior_value, m.change_pct, m.unit,
-               m.period, m.prior_period, m.page_num, m.table_type, m.document_id
+               m.period, m.prior_period, m.page_num, m.table_type, m.filing_id
         FROM metrics m
         WHERE {where_clause}
         ORDER BY m.metric_name
@@ -191,7 +188,7 @@ async def search_metrics(
             prior_period=row["prior_period"],
             page_num=row["page_num"],
             table_type=row["table_type"],
-            document_id=row["document_id"],
+            filing_id=row["filing_id"],
         )
         for row in rows
     ]
@@ -202,62 +199,64 @@ async def search_metrics(
 def compute_ratios_from_metrics(metrics: list[MetricResult]) -> list[ComputedRatio]:
     """Compute all possible financial ratios from retrieved metrics.
 
-    Builds the metrics dict expected by ratios.compute_all_ratios from
-    the MetricResult list.
+    When metrics come from multiple filings (multi-company query), ratios
+    are computed per-filing so each company gets its own set of ratios
+    tagged with the filing_id.
     """
     if not metrics:
         return []
 
-    # Build dict: metric_name -> (current_value, prior_value)
-    metrics_dict: dict[str, tuple[float | None, float | None]] = {}
+    # Group metrics by filing_id so ratios are per-company
+    from collections import defaultdict
+    by_filing: dict[UUID, dict[str, tuple[float | None, float | None]]] = defaultdict(dict)
     for m in metrics:
-        if m.metric_name not in metrics_dict:
-            metrics_dict[m.metric_name] = (m.value, m.prior_value)
+        if m.metric_name not in by_filing[m.filing_id]:
+            by_filing[m.filing_id][m.metric_name] = (m.value, m.prior_value)
 
-    return compute_all_ratios(metrics_dict)
+    all_ratios: list[ComputedRatio] = []
+    for filing_id, metrics_dict in by_filing.items():
+        for r in compute_all_ratios(metrics_dict):
+            r.filing_id = filing_id
+            all_ratios.append(r)
+
+    return all_ratios
 
 
 # ---------- Hybrid retrieval ----------
 
 async def hybrid_retrieve(
     query: str,
-    document_ids: list[UUID] | None = None,
+    filing_ids: list[UUID] | None = None,
     metric_names: list[str] | None = None,
     section_filter: str | None = None,
     top_k_chunks: int = 5,
 ) -> RetrievalResult:
     """Combined retrieval: vector search + structured metric lookup + ratios.
 
-    This is the main entry point for the retrieval layer. The query pipeline
-    (Phase 5) calls this after resolving jargon and expanding synonyms.
+    Main entry point for the retrieval layer. The query pipeline calls this
+    after resolving jargon, expanding synonyms, and resolving filings.
 
     Args:
         query: natural language question (for vector search)
-        document_ids: restrict to specific documents
+        filing_ids: restrict to specific filings (set by filing_resolver)
         metric_names: canonical metric names to look up (None = skip structured)
         section_filter: restrict vector search to a SEC section
         top_k_chunks: how many text chunks to return
-
-    Returns:
-        RetrievalResult with chunks, metrics, and computed ratios.
     """
-    # Run vector search
     chunks = await search_chunks(
         query=query,
-        document_ids=document_ids,
+        filing_ids=filing_ids,
         section_filter=section_filter,
         top_k=top_k_chunks,
     )
 
-    # Run structured metric lookup if metric names provided
     metrics: list[MetricResult] = []
     if metric_names:
         metrics = await search_metrics(
             metric_names=metric_names,
-            document_ids=document_ids,
+            filing_ids=filing_ids,
         )
 
-    # Compute ratios from whatever metrics we found
     ratios = compute_ratios_from_metrics(metrics)
 
     return RetrievalResult(

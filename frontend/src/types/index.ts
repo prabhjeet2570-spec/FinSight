@@ -1,49 +1,8 @@
-// Mirrors backend Pydantic models in app/models/document.py and app/models/query.py
-
-export type DocumentStatus = 'processing' | 'ready' | 'failed';
-
-export interface DocumentResponse {
-  id: string;
-  filename: string | null;
-  company: string;
-  filing_type: string | null;
-  period: string | null;
-  uploaded_at: string;
-  page_count: number | null;
-  status: DocumentStatus;
-}
-
-export interface UploadResponse {
-  documents: DocumentResponse[];
-  message: string;
-}
-
-export interface DocumentStatusResponse {
-  id: string;
-  status: DocumentStatus;
-  filename: string | null;
-  company: string;
-  page_count: number | null;
-}
-
-export interface MetricResponse {
-  id: string;
-  metric_name: string;
-  value: number | null;
-  prior_value: number | null;
-  change_pct: number | null;
-  unit: string | null;
-  period: string | null;
-  prior_period: string | null;
-  page_num: number | null;
-  table_type: string | null;
-}
-
 export type CitationSource = 'text_chunk' | 'metric' | 'ratio';
 
 export interface Citation {
   source_type: CitationSource;
-  document_id: string | null;
+  filing_id: string | null;
   page_num: number | null;
   section: string | null;
   metric_name: string | null;
@@ -55,7 +14,21 @@ export type Confidence = 'high' | 'medium' | 'low';
 
 export interface QueryRequest {
   question: string;
-  document_ids?: string[];
+}
+
+export interface CompanyResolved {
+  ticker: string;
+  name: string;
+  cik: string;
+}
+
+export interface FilingUsed {
+  filing_id: string;
+  ticker: string;
+  filing_type: string;
+  period_label: string | null;
+  accession_number: string;
+  primary_doc_url: string | null;
 }
 
 export interface MetricUsed {
@@ -89,9 +62,25 @@ export interface QueryResponse {
   citations: Citation[];
   query_type: QueryType;
   confidence: Confidence;
+  companies_resolved: CompanyResolved[];
+  filings_used: FilingUsed[];
   metrics_used: MetricUsed[] | null;
   ratios_computed: RatioComputed[] | null;
   sentiment: SentimentResult | null;
+}
+
+export interface QueryJobAccepted {
+  job_id: string;
+  status: string;
+  progress: string | null;
+}
+
+export interface QueryJobStatus {
+  job_id: string;
+  status: 'pending' | 'processing' | 'ready' | 'failed';
+  progress: string | null;
+  result: QueryResponse | null;
+  error: string | null;
 }
 
 export interface ChatMessage {
@@ -101,4 +90,6 @@ export interface ChatMessage {
   response?: QueryResponse;
   error?: string;
   pending?: boolean;
+  jobId?: string;
+  progress?: string | null;
 }
