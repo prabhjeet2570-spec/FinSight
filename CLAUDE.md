@@ -2,9 +2,9 @@
 
 ## What This Is
 
-A financial intelligence tool that combines document RAG with SEC EDGAR structured data to analyze any US public company's finances. Users can upload SEC filings (10-Q, 10-K, press releases) for deep narrative analysis, search any company by ticker for instant financial metrics, or do both for verified cross-referenced analysis.
+A financial intelligence tool for analyzing SEC filings. Users upload 10-Q, 10-K, or press release PDFs and ask questions in natural language. Answers come back grounded in the actual document content with page citations and confidence scoring.
 
-**This is NOT a generic document Q&A tool.** It has domain-specific financial intelligence: FinBERT embeddings, financial jargon understanding, computed ratios, XBRL-verified metrics, and grounded sentiment analysis. That's what differentiates it from the dozens of "upload PDF and ask questions" RAG demos.
+**This is NOT a generic document Q&A tool.** It has domain-specific financial intelligence: dual-path PDF extraction (tables + text), FinBERT embeddings, financial jargon understanding, and computed financial ratios from extracted metrics. That's what differentiates it from the dozens of "upload PDF and ask questions" RAG demos.
 
 **This is a portfolio project for Prabhjeet Singh** (NYU MS CS student). It should demonstrate strong backend/ML engineering skills and domain-specific intelligence design.
 
@@ -12,14 +12,13 @@ A financial intelligence tool that combines document RAG with SEC EDGAR structur
 
 ## Core Requirements (Non-Negotiable)
 
-1. **Strictly grounded answers** — answers come ONLY from uploaded documents and/or SEC EDGAR structured data. If the answer isn't available, say "I don't have this information." Never hallucinate.
+1. **Strictly grounded answers** — answers come ONLY from uploaded documents. If the answer isn't available, say "I don't have this information." Never hallucinate.
 2. **Dual-path extraction** — both structured table extraction AND unstructured text extraction from PDFs. Not just text-only RAG.
-3. **Three input modes** — upload a filing, search a company by ticker, or both combined.
-4. **Up to 4 documents** at once for cross-document analysis.
-5. **10MB per file max**, 40MB total across all uploads.
-6. **Financial sentiment analysis** grounded in within-document comparisons and XBRL historical data.
-7. **Free deployment** — $0 cost using free tiers only.
-8. **Open-source models** for embedding and sentiment (no paid API for these).
+3. **Up to 4 documents** at once for cross-document analysis.
+4. **10MB per file max**, 40MB total across all uploads.
+5. **Financial sentiment analysis** grounded in within-document YoY comparisons and FinBERT on MD&A text.
+6. **Free deployment** — $0 cost using free tiers only.
+7. **Open-source models** for embedding and sentiment (no paid API for these).
 
 ---
 
@@ -43,101 +42,21 @@ Maps analyst shorthand to actual metrics:
 - "top line" → revenue
 - "bottom line" → net income
 - "burn rate" → net cash used in operations
-- "margins" → gross profit / revenue
-- "leverage" → total debt / total equity
+- "margins" → gross profit / revenue (special concept; expands to multiple metrics + triggers ratio computation)
+- "leverage" → total debt / total equity (special concept)
 
 **3. Computable Ratio Definitions (~15-20 formulas)**
-Standard financial ratios computed from extracted/XBRL metrics:
+Standard financial ratios computed from extracted metrics:
 - Gross margin = gross_profit / revenue
 - Operating margin = operating_income / revenue
 - Net margin = net_income / revenue
 - YoY growth = (current - prior) / prior
-- Revenue mix = segment_revenue / total_revenue
+- Debt-to-equity = total_debt / stockholders_equity
 
-When a user asks "what's Apple's gross margin?" — we don't ask the LLM to figure it out. We look up gross_profit and revenue from structured data, compute the ratio ourselves, and present it.
+When a user asks "what's the gross margin?" — we don't ask the LLM to figure it out. We look up gross_profit and revenue from the extracted metrics table, compute the ratio ourselves in `app/finance/ratios.py`, and present it as a `ComputedRatio` in the response.
 
 **4. FinBERT for Domain-Specific Understanding**
-Finance-trained models instead of generic ones (see Tech Stack section).
-
-**5. XBRL Integration for Verified Structured Data**
-Direct access to SEC's machine-readable financial data via EdgarTools (see XBRL section).
-
----
-
-## Three Input Modes
-
-The UI doesn't expose "modes" — the user just gives us what they have and we provide the best analysis possible.
-
-### Mode 1: Ticker Search (no upload needed)
-User types "Apple" or "AAPL" → we pull structured data from SEC EDGAR XBRL → instant financial analysis.
-
-Available: revenue trends, computed ratios, cross-company comparisons, historical metrics — all from XBRL.
-Not available: narrative analysis (MD&A, risk factors, management commentary) — that requires the actual document.
-
-### Mode 2: Document Upload
-User uploads a 10-Q PDF → extract text + tables → full narrative and numerical analysis.
-We auto-detect the company from the document and also pull XBRL data to cross-reference.
-
-### Mode 3: Combined (most powerful)
-Ticker search + document upload. Verified metrics from XBRL + narrative analysis from the document.
-Cross-verification: check if pdfplumber-extracted numbers match XBRL — if they don't, trust XBRL.
-
-### What each mode can answer
-
-| Query type | Ticker only | Upload only | Combined |
-|-----------|-------------|-------------|----------|
-| "What was revenue?" | Yes (XBRL) | Yes (extracted) | Yes (verified) |
-| "Revenue trend last 4 quarters?" | Yes (XBRL historical) | Only if 4 docs uploaded | Yes |
-| "What did management say about AI?" | No — needs document | Yes | Yes |
-| "What are the risk factors?" | No — needs document | Yes | Yes |
-| "Compare Apple vs Microsoft margins" | Yes (XBRL both) | No | Yes |
-| "What's the gross margin?" | Yes (computed from XBRL) | Yes (computed from extracted) | Yes (verified) |
-| "Is the outlook positive?" | Partial (from metrics trend) | Yes (MD&A sentiment) | Yes (both signals) |
-
-When a query needs data we don't have, we tell the user specifically what to add:
-> "I don't have the full filing text — I only have XBRL metrics for Apple. Upload the 10-Q to analyze management commentary and narrative sections."
-
----
-
-## XBRL Integration via EdgarTools
-
-Instead of writing raw EDGAR API calls, we use [EdgarTools](https://github.com/dgunning/edgartools) — a mature Python library that:
-- Handles company search by name/ticker
-- Parses XBRL into structured Python objects and DataFrames
-- Learned mappings from 32,000+ real SEC filings
-- Handles all edge cases (different reporting styles, IFRS vs US-GAAP, etc.)
-- Free, no API keys, no rate limits
-
-**Why XBRL matters:**
-- XBRL data has 0.11% scaling errors vs 8.16% for text extraction (per XBRL.org research)
-- Every number in a 10-Q has a machine-readable XBRL tag — no extraction needed
-- Historical data going back years — instant trend analysis
-- Cross-company comparison using standardized concepts
-
-### EDGAR API endpoints we use (via EdgarTools)
-
-```python
-# Company search
-Company("AAPL")  # or Company.search("Apple")
-
-# Get financial facts — every metric ever reported
-company.get_facts()  # returns structured DataFrame
-
-# Get specific filing
-company.get_filings(form="10-Q").latest()
-
-# Get financial statements
-filing.financials  # income statement, balance sheet, cash flow — all structured
-```
-
-### New API endpoints for ticker search
-
-```
-GET  /api/companies/search?q=apple      -- Search companies by name/ticker
-GET  /api/companies/{ticker}/financials  -- Structured metrics from XBRL
-GET  /api/companies/{ticker}/ratios      -- Computed financial ratios
-GET  /api/companies/{ticker}/compare?with=MSFT  -- Cross-company comparison
-```
+Finance-trained model instead of generic embeddings (see Tech Stack section). FinBERT understands that "profitability concerns" and "operating margin compression" are related — generic models miss this.
 
 ---
 
@@ -150,8 +69,7 @@ GET  /api/companies/{ticker}/compare?with=MSFT  -- Cross-company comparison
 | **Database** | PostgreSQL + pgvector on Neon | One DB for both relational data AND vector search. Free 512MB. |
 | **PDF Extraction** | pdfplumber | Handles all SEC filings (text-based PDFs). Free, fast, reliable. |
 | **VLM Fallback** | Deferred to later phase | For scanned/graphical PDFs. Not needed for SEC filings. |
-| **XBRL Data** | EdgarTools (Python library) | Structured SEC financial data. Learned mappings from 32K+ filings. Free. |
-| **Embeddings** | ProsusAI/finbert or finance-tuned model | Finance-specific embeddings — understands that "bearish" and "declining revenue" are related. Generic models miss this. |
+| **Embeddings** | ProsusAI/finbert | Finance-specific embeddings — understands that "bearish" and "declining revenue" are related. Generic models miss this. |
 | **Sentiment** | ProsusAI/finbert (sentiment variant) | Trained on 10,000+ financial texts. Knows "restructuring charges" is negative, "strategic investment" is positive. |
 | **Generation LLM** | Gemini 2.0 Flash (free tier) | 15 RPM, 1M tokens/min — most generous free tier |
 | **Orchestration** | Roll our own (no LangChain/LlamaIndex framework) | Full control, less abstraction to debug. Use utilities selectively. |
@@ -166,13 +84,12 @@ GET  /api/companies/{ticker}/compare?with=MSFT  -- Cross-company comparison
 - **Roll our own over LangChain**: For a focused app with clear retrieval paths, direct code is cleaner. LangChain adds abstraction we'd fight when debugging.
 - **Gemini Flash over GPT-4o/Groq**: Most generous free tier by far. Good quality for financial reasoning.
 - **FinBERT over all-MiniLM-L6-v2**: Finance-specific embeddings give better retrieval for financial queries. "Profitability concerns" matches "operating margin compression" — generic models miss this. Similar RAM footprint (~110MB vs ~90MB).
-- **EdgarTools over raw EDGAR API**: Mature library with 32K+ filing mappings, handles XBRL edge cases we'd spend weeks on. Free, no API key.
 
 ---
 
 ## Architecture
 
-### Processing Pipeline (Upload -> Ready)
+### Processing Pipeline (Upload → Ready)
 
 ```
 User uploads PDF (max 4 files, 10MB each)
@@ -180,9 +97,6 @@ User uploads PDF (max 4 files, 10MB each)
         v
    Metadata Extraction
    (company name, filing type, period from filename + first page)
-        |
-        v
-   Auto-detect company -> also pull XBRL data from EDGAR via EdgarTools
         |
         v
    Page-by-Page Classification
@@ -202,85 +116,66 @@ Quality Check        Section Detection
 inconsistent cols,   + Chunking (RecursiveCharacterTextSplitter)
 no numeric data)        |
    |                   v
-   |              Embed chunks (FinBERT)
+   |              Embed chunks (FinBERT, 768-dim)
    |              Store in text_chunks table
    v
 Parse to JSON
 Store in extracted_tables
-Flatten key metrics -> metrics table
-Cross-verify against XBRL data (trust XBRL if mismatch)
-```
-
-### Ticker Search Pipeline (no upload)
-
-```
-User types company name or ticker
-        |
-        v
-   EdgarTools: Company search
-   Returns: {name, ticker, CIK}
-        |
-        v
-   EdgarTools: Get financial facts (XBRL)
-   Returns: structured metrics for all reported periods
-        |
-        v
-   Store in metrics table (source: 'xbrl')
-   Compute ratios (margins, growth rates, revenue mix)
-        |
-        v
-   Ready for queries — numerical and comparison only
-   (narrative queries prompt user to upload a filing)
+Flatten key metrics → metrics table
 ```
 
 ### pdfplumber Failure Detection
 
 pdfplumber doesn't crash — it returns bad data silently. Detect with:
-- No tables found but page has many lines/rects (>20) -> graphical table, needs VLM
-- Table found but >40% empty cells -> misaligned extraction
+- No tables found but page has many lines/rects (>20) → graphical table, needs VLM
+- Table found but >40% empty cells → misaligned extraction
 - Table found but inconsistent column counts across rows
 - Table found but no numeric data (financial tables MUST have numbers)
 
 When quality check fails: log it, flag the page. VLM fallback is deferred to later phase.
 
-### Query Pipeline (Question -> Answer)
+### Query Pipeline (Question → Answer)
 
 ```
 User question: "How's the top line looking?"
         |
         v
-   Financial Jargon Resolution
-   "top line" -> "revenue" (from jargon map)
-        |
-        v
-   Metric Synonym Expansion
-   "revenue" -> ["revenue", "net sales", "total net sales", ...] (from synonym dict)
-        |
-        v
    Query Classifier (Gemini Flash, few-shot)
-   Returns: {type, entities, target_docs, expanded_terms}
+   Returns: {query_type, metrics, section_hint, reasoning}
         |
         v
-   Route by Type:
-   - NUMERICAL   -> metrics table SQL lookup (using expanded synonyms)
-   - NARRATIVE    -> text_chunks vector search (FinBERT embeddings)
-   - COMPARISON   -> both paths merged
-   - SENTIMENT    -> metrics (for numbers) + MD&A chunks (for qualitative) + FinBERT sentiment
-   - CROSS_DOC    -> metrics from multiple documents
-   - CROSS_COMPANY -> XBRL data from multiple companies
-   - UNSUPPORTED  -> redirect with specific guidance on what data to add
+   Financial Jargon Resolution
+   "top line" → adds "revenue" to metrics list
+   "margins" → adds gross_profit + revenue + operating_income + net_income
+              + ratios_needed: [gross_margin, operating_margin, net_margin]
+        |
+        v
+   Route by Query Type:
+   - NUMERICAL  → metrics SQL lookup (synonym-expanded) + 2 chunks for context
+   - NARRATIVE  → 8 chunks via vector search, skip metrics lookup
+   - SENTIMENT  → 8 chunks (default to MD&A section) + metrics
+   - MIXED      → 5 chunks + metrics + ratios
+        |
+        v
+   Hybrid Retrieval
+   - Vector search: FinBERT embedding of question vs text_chunks (cosine)
+   - Structured lookup: SELECT from metrics WHERE metric_name IN (synonyms)
+   - Ratio computation: compute_all_ratios() over retrieved metrics
         |
         v
    Context Assembly
-   (combine metrics + XBRL data + table rows + text chunks, deduplicate, rank)
+   (## Extracted Metrics + ## Computed Ratios + ## Relevant Document Excerpts)
         |
         v
    Grounded Answer Generation (Gemini Flash)
-   Strict system prompt: answer ONLY from context, cite sources (page numbers for PDF,
-   "SEC EDGAR XBRL" for structured data), say "not available" if unsure.
+   Strict system prompt: answer ONLY from context, cite [Page N] / [Metric: name],
+   say "I don't have enough information" if context is insufficient.
         |
         v
-   Response: {answer, citations, confidence, query_type, sentiment?, computed_ratios?}
+   Confidence Assessment (heuristic on retrieval quality + query type)
+        |
+        v
+   Response: {answer, citations, query_type, confidence, metrics_used, ratios_computed}
 ```
 
 ### SEC Filing Section Detection
@@ -293,23 +188,23 @@ Standard sections to tag chunks with (for relevance boosting):
 - Part II Item 1: Legal
 - Part II Item 1A: Risk Factors
 
-A question about "risk" should prefer chunks from Risk Factors over random mentions elsewhere.
+A question about "risk" should prefer chunks from Risk Factors over random mentions elsewhere. SENTIMENT queries default `section_hint` to MD&A.
 
 ### Sentiment Analysis Approach
 
-Two signal sources, both grounded:
+Two signal sources, both grounded in the uploaded document:
 
-**Quantitative (from metrics/XBRL):**
-- Extract YoY changes (Revenue +9.6%, Net Income +9.3%, etc.)
-- Trend detection across quarters if multiple periods available
-- All numbers sourced from document tables or XBRL
+**Quantitative (from extracted metrics):**
+- Within-document YoY changes (Revenue +9.6%, Net Income +9.3%, etc.)
+- Trend detection across multiple uploaded periods if available
+- All numbers sourced from document tables
 
 **Qualitative (from document text + FinBERT):**
 - Run FinBERT sentiment on MD&A chunks
 - FinBERT was trained on 10,000+ financial texts — knows "restructuring charges" is negative, "strategic investment in growth" is positive
 - Extract qualitative signals: "increased primarily due to...", "decline was driven by..."
 
-Combined sentiment is always grounded with explicit sourcing — never speculate beyond what the data says.
+Combined sentiment is always grounded in the document — never speculate beyond what's there. No external market data.
 
 ---
 
@@ -317,18 +212,15 @@ Combined sentiment is always grounded with explicit sourcing — never speculate
 
 ```sql
 CREATE EXTENSION vector;
+CREATE EXTENSION pgcrypto;
 
 -- Documents table
 CREATE TABLE documents (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    filename    TEXT,                -- NULL for ticker-only searches
+    filename    TEXT,
     company     TEXT NOT NULL,
-    ticker      TEXT,                -- e.g., 'AAPL'
-    cik         TEXT,                -- SEC CIK number
-    filing_type TEXT,                -- '10-Q', '10-K', 'press-release', 'xbrl-only'
+    filing_type TEXT,                -- '10-Q', '10-K', 'press-release'
     period      TEXT,                -- 'Q3 2025'
-    fiscal_year TEXT,                -- 'FY2025'
-    source      TEXT DEFAULT 'upload', -- 'upload' or 'xbrl'
     uploaded_at TIMESTAMPTZ DEFAULT now(),
     page_count  INT,
     status      TEXT DEFAULT 'processing'  -- 'processing', 'ready', 'failed'
@@ -342,7 +234,7 @@ CREATE TABLE text_chunks (
     page_num    INT,
     section     TEXT,              -- 'MD&A', 'Risk Factors', 'Notes', etc.
     chunk_index INT,
-    embedding   vector(768),      -- FinBERT output (768-dim)
+    embedding   vector(768),       -- FinBERT output (768-dim)
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 
@@ -352,10 +244,8 @@ CREATE TABLE extracted_tables (
     document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
     page_num    INT,
     table_type  TEXT,              -- 'income_statement', 'balance_sheet', etc.
-    period      TEXT,
     headers     JSONB,
-    rows        JSONB NOT NULL,   -- [{label, values: {current, prior, change_pct}}]
-    raw_text    TEXT,             -- searchable text version of table
+    rows        JSONB NOT NULL,
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 
@@ -372,8 +262,6 @@ CREATE TABLE metrics (
     prior_period  TEXT,
     page_num      INT,
     table_type    TEXT,
-    source        TEXT DEFAULT 'extracted',  -- 'extracted' (from PDF) or 'xbrl' (from EDGAR)
-    verified      BOOLEAN DEFAULT FALSE,     -- TRUE if extracted value matches XBRL
     created_at    TIMESTAMPTZ DEFAULT now()
 );
 
@@ -385,15 +273,7 @@ CREATE INDEX idx_chunks_section ON text_chunks(section);
 CREATE INDEX idx_tables_document ON extracted_tables(document_id);
 CREATE INDEX idx_metrics_document ON metrics(document_id);
 CREATE INDEX idx_metrics_name ON metrics(metric_name);
-CREATE INDEX idx_metrics_source ON metrics(source);
-CREATE INDEX idx_documents_ticker ON documents(ticker);
 ```
-
-Changes from earlier version:
-- `documents` table now has `ticker`, `cik`, `source` fields for XBRL-only entries
-- `text_chunks` embedding is now `vector(768)` for FinBERT (was 384 for MiniLM)
-- `metrics` table now has `source` ('extracted' vs 'xbrl') and `verified` (cross-referenced) fields
-- Added indexes for `section`, `source`, `ticker`
 
 ---
 
@@ -408,16 +288,11 @@ GET    /api/documents/{id}/metrics   -- All extracted metrics for a document
 GET    /api/documents/{id}/tables    -- All extracted tables for a document
 DELETE /api/documents/{id}           -- Remove document + all derived data (cascade)
 
-# Company search (XBRL / EdgarTools)
-GET    /api/companies/search?q=apple       -- Search companies by name/ticker
-GET    /api/companies/{ticker}/financials   -- Structured metrics from XBRL
-GET    /api/companies/{ticker}/ratios       -- Computed financial ratios
-GET    /api/companies/{ticker}/compare?with=MSFT  -- Cross-company comparison
-
 # Query
 POST   /api/query                    -- Ask a question
-       Body: {question, document_ids?: [...], ticker?: string}
-       Response: {answer, citations, confidence, query_type, sentiment?, ratios?}
+       Body: {question, document_ids?: [UUID]}
+       Response: {answer, citations, query_type, confidence,
+                  metrics_used, ratios_computed}
 
 # Health
 GET    /health                       -- Health check
@@ -428,53 +303,37 @@ GET    /health                       -- Health check
 ## UI Design
 
 ### Core Principle
-One smart input — no mode selection. The system detects what the user gave it and provides the best analysis possible.
+Two panels. Documents on the left, chat on the right. No mode selection — drop a PDF, ask questions about it.
 
-### Landing State
+### Layout
 ```
-┌────────────────────────────────��─────────────────────────┐
-│  FinSight                                                │
-├────────────────────────────────���────────────────────────��┤
-│                                                          │
-│  ┌──────────────────────────────────────────────────┐    │
-│  │  Search a company or drop a filing...            │    │
-│  └──────────────────────────────────────────────────┘    │
-│                                                          │
-│  One input. Type "Apple" or "AAPL" for instant analysis. │
-│  Drop a PDF for deep document analysis.                  │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
-
-### After Ticker Search
-```
-┌───────────────────��───────────────────────────────────��──┐
-│  Apple Inc. (AAPL)               │  Chat Panel           │
-│  Latest: 10-Q Q3 2025            │                       │
-│                                   │  Q: How has iPhone    │
-│  Key Metrics (XBRL)              │  been doing?          │
-│  Revenue      $94.0B   +9.6% ▲   │                       │
-│  Net Income   $23.4B   +9.3% ▲   │  A: Based on XBRL    │
-│  Gross Margin  46.3%   +0.3% ▲   │  data, iPhone rev...  │
-│  EPS          $1.40    +12%  ▲   │  [SEC EDGAR]          │
-│                                   │                       │
-│  Quarterly Trend                 │                       │
-│  Rev: Q1→Q2→Q3 (accelerating)   │                       │
-│                                   │                       │
-│  Upload a filing for deeper      │                       │
-│  analysis (MD&A, risk factors)   │                       │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  FinSight   Grounded financial intelligence for SEC filings  │
+├────────────────────┬─────────────────────────────────────────┤
+│  DOCUMENTS         │  Ask a question                         │
+│                    │  Querying 1 selected document           │
+│  ┌──────────────┐  │                                         │
+│  │  Drop PDFs   │  │  ┌───────────────────────────────────┐  │
+│  │  here…       │  │  │  Try asking:                      │  │
+│  └──────────────┘  │  │  • "What was revenue?"            │  │
+│                    │  │  • "How's the top line?"          │  │
+│  ────────────────  │  │  • "What are the risk factors?"   │  │
+│  ☑ AAPL-10Q.pdf    │  │  • "What's the gross margin?"     │  │
+│    Apple · 10-Q    │  │  • "Summarize MD&A on AI."        │  │
+│    [ready]    ×    │  │                                   │  │
+│                    │  └───────────────────────────────────┘  │
+│  ☐ MSFT-10Q.pdf    │                                         │
+│    [processing] ×  │  ┌───────────────────────────────────┐  │
+│                    │  │  Ask about revenue, margins…  │Ask│  │
+│                    │  └───────────────────────────────────┘  │
+└────────────────────┴─────────────────────────────────────────┘
 ```
 
-### After Document Upload
-Same layout but with richer capabilities (narrative questions work).
-Auto-detects company → also pulls XBRL data.
-Shows "verified" badge on metrics that match XBRL.
-
-### Adaptive Chat Responses
-When the user asks something that needs data we don't have:
-> "I don't have the full filing text — I only have XBRL metrics for Apple. Upload the 10-Q to analyze management commentary."
-> [Upload a filing]
+### Component Behavior
+- **UploadZone** — drag-drop, click-to-browse. Validates 10MB/file, 4-file/40MB caps client-side before POST.
+- **DocumentList** — checkbox-selectable (only ready docs). Status badge polls `/status` every 2.5s while processing. Delete button per row.
+- **ChatPanel** — textarea + Ask button. Scopes query to selected docs (or all ready docs if none selected). Each assistant bubble shows confidence + query_type tags and an expandable citation list.
+- **Adaptive responses** — when retrieval is empty the backend short-circuits the LLM call and returns "I don't have enough information in the uploaded documents to answer this. Make sure you've uploaded relevant SEC filings…"
 
 ---
 
@@ -487,11 +346,10 @@ Static files                   512MB RAM free tier            512MB storage free
 No RAM concern                 Spins down after 15min idle    Managed, scales to zero
                      <-- API calls (HTTPS) -->     <-- SQL + pgvector queries -->
                                     |
-                              ┌─────┴─────┐
-                              v           v
-                        Gemini Flash   SEC EDGAR
-                        (free API)     (free, via EdgarTools)
-                        15 RPM         10 req/sec
+                                    v
+                              Gemini Flash
+                              (free API)
+                              15 RPM
 ```
 
 ### RAM Budget (Render Free Tier = 512MB)
@@ -500,11 +358,10 @@ No RAM concern                 Spins down after 15min idle    Managed, scales to
 FastAPI + dependencies:     ~80MB
 pdfplumber (on demand):     ~30MB
 FinBERT model:              ~110MB  (lazy loaded, shared between embedding + sentiment)
-EdgarTools:                 ~20MB
 PDF in memory (1 file):     ~10MB   (process files one at a time, not all 4 at once)
 Working overhead:           ~50MB
 ─────────────────────────────────
-Total:                      ~300MB  (fits in 512MB with headroom)
+Total:                      ~280MB  (fits in 512MB with headroom)
 ```
 
 Cold start: Render free tier takes ~30s to boot after idle. Show "waking up the server..." in the UI.
@@ -524,45 +381,43 @@ finsight/
 │   │   │   └── schema.sql       # Table definitions
 │   │   ├── models/              # Pydantic request/response schemas
 │   │   │   ├── document.py
-│   │   │   ├── company.py
 │   │   │   └── query.py
 │   │   ├── routers/             # API route handlers
 │   │   │   ├── documents.py
-│   │   │   ├── companies.py
 │   │   │   └── query.py
 │   │   ├── services/            # Business logic
-│   │   │   ├── extraction.py    # PDF -> tables + text
-│   │   │   ├── chunking.py      # Text -> chunks
-│   │   │   ├── embedding.py     # Chunks -> vectors (FinBERT)
-│   │   │   ├── edgar.py         # EdgarTools XBRL integration
-│   │   │   ├── classifier.py    # Query classification
-│   │   │   ├── retrieval.py     # Vector search + SQL lookup + XBRL
-│   │   │   ├── generation.py    # Gemini Flash answer generation
-│   │   │   └── sentiment.py     # FinBERT sentiment analysis
+│   │   │   ├── document_processor.py # Orchestrates the upload pipeline
+│   │   │   ├── extraction.py         # PDF -> tables + text via pdfplumber
+│   │   │   ├── metadata_detection.py # Company / filing type / period
+│   │   │   ├── chunking.py           # Text -> chunks
+│   │   │   ├── embedding.py          # Chunks -> vectors (FinBERT)
+│   │   │   ├── metric_flattening.py  # Tables -> metrics rows
+│   │   │   ├── retrieval.py          # Vector search + SQL lookup + ratio compute
+│   │   │   ├── classifier.py         # Gemini Flash query classifier
+│   │   │   └── generation.py         # Gemini Flash grounded answer generation
 │   │   ├── finance/             # Financial domain knowledge
 │   │   │   ├── synonyms.py      # Metric synonym dictionary (~60 entries)
 │   │   │   ├── jargon.py        # Financial jargon map (~30 entries)
 │   │   │   └── ratios.py        # Computable ratio definitions (~20 formulas)
 │   │   └── utils/
 │   │       └── section_detector.py  # SEC filing section regex
+│   ├── scripts/                 # Standalone test/dev scripts
 │   ├── requirements.txt
 │   ├── .env.example
-│   └── Dockerfile               # For Render deployment
+│   └── Dockerfile               # For Render deployment (Phase 7)
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx
+│   │   ├── App.tsx              # Two-panel layout
+│   │   ├── App.css              # All styling
 │   │   ├── components/
-│   │   │   ├── SearchBar.tsx        # Unified search/upload input
-│   │   │   ├── CompanyPanel.tsx     # Company info + metrics + trends
-│   │   │   ├── DocumentPanel.tsx    # Uploaded docs list + status
-│   │   │   ├── ChatPanel.tsx        # Q&A interface
-│   │   │   ├── MetricsCard.tsx      # Key metrics display with verified badge
-│   │   │   └── UploadZone.tsx       # Drag-drop file upload
-│   │   ├── hooks/
-│   │   │   └── useApi.ts
+│   │   │   ├── UploadZone.tsx       # Drag-drop file upload + client-side validation
+│   │   │   ├── DocumentList.tsx     # Doc list with status polling + selection
+│   │   │   └── ChatPanel.tsx        # Q&A with citations + confidence tags
+│   │   ├── lib/
+│   │   │   └── api.ts           # fetch wrapper for backend endpoints
 │   │   ├── types/
-│   │   │   └── index.ts
-│   │   └── config.ts
+│   │   │   └── index.ts         # TS mirrors of backend Pydantic models
+│   │   └── config.ts            # API_BASE_URL
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vite.config.ts
@@ -575,102 +430,100 @@ finsight/
 
 ## Build Plan
 
-### Phase 1: Project Setup + Database
+### Phase 1: Project Setup + Database ✅
 **Goal:** Skeleton running locally, database connected
 
-- [ ] Initialize project structure (backend + frontend dirs)
-- [ ] FastAPI app with `/health` endpoint
-- [ ] config.py loading env vars (DATABASE_URL, GEMINI_API_KEY, SEC_EDGAR_USER_AGENT)
-- [ ] Async Postgres connection using asyncpg
-- [ ] schema.sql with all 4 tables + pgvector extension + all indexes
-- [ ] DB initialization on startup (run schema if tables don't exist)
-- [ ] React + Vite + TypeScript scaffold
-- [ ] Placeholder frontend page with FinSight branding
-- [ ] .gitignore, .env.example, README.md
+- [x] Initialize project structure (backend + frontend dirs)
+- [x] FastAPI app with `/health` endpoint
+- [x] config.py loading env vars (DATABASE_URL, GEMINI_API_KEY)
+- [x] Async Postgres connection using asyncpg
+- [x] schema.sql with all 4 tables + pgvector extension + all indexes
+- [x] DB initialization on startup (run schema if tables don't exist)
+- [x] React + Vite + TypeScript scaffold
+- [x] Placeholder frontend page with FinSight branding
+- [x] .gitignore, .env.example, README.md
 - **Test:** `GET /health` returns 200, database connects, frontend renders
 
-### Phase 2: PDF Upload + Extraction Pipeline
+### Phase 2: PDF Upload + Extraction Pipeline ✅
 **Goal:** Upload a PDF, extract text and tables, store in database
 
-- [ ] `POST /api/documents/upload` — accept PDF, validate size (10MB), save metadata
-- [ ] Metadata detection — parse company, filing type, period from filename + first page
-- [ ] Page-by-page processing with pdfplumber
-- [ ] Table extraction + quality validation (empty cells, inconsistent cols, no numbers)
-- [ ] Table parsing to structured JSON
-- [ ] Metric flattening — extract key numbers into metrics table
-- [ ] Text extraction + section detection (regex for SEC filing sections)
-- [ ] Text chunking with RecursiveCharacterTextSplitter
-- [ ] Processing status tracking (processing -> ready/failed)
-- [ ] `GET /api/documents/{id}/status`
-- [ ] `GET /api/documents/{id}/tables`
-- [ ] `GET /api/documents/{id}/metrics`
+- [x] `POST /api/documents/upload` — accept PDF, validate size (10MB), save metadata
+- [x] Metadata detection — parse company, filing type, period from filename + first page
+- [x] Page-by-page processing with pdfplumber
+- [x] Table extraction + quality validation (empty cells, inconsistent cols, no numbers)
+- [x] Table parsing to structured JSON
+- [x] Metric flattening — extract key numbers into metrics table
+- [x] Text extraction + section detection (regex for SEC filing sections)
+- [x] Text chunking with RecursiveCharacterTextSplitter
+- [x] Processing status tracking (processing → ready/failed)
+- [x] `GET /api/documents/{id}/status`
+- [x] `GET /api/documents/{id}/tables`
+- [x] `GET /api/documents/{id}/metrics`
 - **Test:** Upload Apple 10-Q, verify extracted tables and metrics match actual PDF data
 
-### Phase 3: XBRL Integration + Company Search
-**Goal:** Search any company by ticker, get structured financial data instantly
+### Phase 3: Financial Intelligence Layer ✅
+**Goal:** Encode finance domain knowledge as data, not LLM guesses
 
-- [ ] EdgarTools integration — company search, financial facts, filing history
-- [ ] `GET /api/companies/search?q=` — search by name/ticker
-- [ ] `GET /api/companies/{ticker}/financials` — structured metrics from XBRL
-- [ ] Store XBRL metrics in metrics table (source: 'xbrl')
-- [ ] Cross-verification — when PDF is uploaded AND XBRL available, compare extracted vs XBRL values, mark verified
-- [ ] Computed financial ratios from XBRL data (margins, growth rates, revenue mix)
-- [ ] `GET /api/companies/{ticker}/ratios`
-- [ ] Financial intelligence data files — synonyms.py, jargon.py, ratios.py
-- **Test:** Search "AAPL", get structured financials. Upload Apple 10-Q, verify metrics match XBRL.
+- [x] Metric synonym dictionary (`app/finance/synonyms.py`) — ~60 canonical metrics with synonyms
+- [x] Financial jargon map (`app/finance/jargon.py`) — ~30 shorthand → metric mappings, with special multi-metric concepts ("margins", "leverage")
+- [x] Ratio definitions (`app/finance/ratios.py`) — ~20 formulas with `compute_ratio` / `compute_all_ratios` and `ComputedRatio` dataclass
+- **Test:** "How's the top line?" resolves to revenue. "What are the margins?" expands to gross_profit + revenue + operating_income + net_income and triggers gross/operating/net margin computation.
 
-### Phase 4: Embeddings + Retrieval
+> **Note:** This phase originally bundled XBRL/EdgarTools integration. That entire branch was dropped (see Decision #19) — FinSight is now RAG-only over uploaded PDFs. Phase 3 is now scoped to the hand-built financial intelligence data files alone.
+
+### Phase 4: Embeddings + Retrieval ✅
 **Goal:** Chunks are searchable via finance-specific vector similarity and structured SQL
 
-- [ ] Lazy-load FinBERT on first request
-- [ ] Generate FinBERT embeddings for all text chunks during upload processing
-- [ ] Store embeddings in pgvector (768-dim)
-- [ ] Vector search function — query embedding vs stored chunk embeddings, return top-K
-- [ ] Structured search function — metric name lookup via SQL with synonym expansion
-- [ ] Hybrid retrieval — combine vector search + SQL metrics + XBRL data, deduplicate, rank
-- [ ] `DELETE /api/documents/{id}` — cascade delete
-- [ ] `GET /api/documents` — list all documents
-- **Test:** Upload Apple 10-Q, search "profitability concerns" -> should match "operating margin" chunks (FinBERT understands this)
+- [x] Lazy-load FinBERT on first request
+- [x] Generate FinBERT embeddings for all text chunks during upload processing
+- [x] Store embeddings in pgvector (768-dim)
+- [x] Vector search function — query embedding vs stored chunk embeddings, return top-K
+- [x] Structured search function — metric name lookup via SQL with synonym expansion
+- [x] Hybrid retrieval — combine vector search + SQL metrics + computed ratios, deduplicate, rank
+- [x] `DELETE /api/documents/{id}` — cascade delete
+- [x] `GET /api/documents` — list all documents
+- **Test:** Upload Apple 10-Q, search "profitability concerns" → matches "operating margin" chunks (FinBERT understands this)
 
-### Phase 5: Query Pipeline + Answer Generation
+### Phase 5: Query Pipeline + Answer Generation ✅
 **Goal:** Ask a question in natural language, get a grounded answer with citations
 
-- [ ] Financial jargon resolution (jargon map)
-- [ ] Metric synonym expansion (synonym dict)
-- [ ] Query classifier — Gemini Flash few-shot prompt returning {type, entities, target_docs, expanded_terms}
-- [ ] Routing logic (NUMERICAL/NARRATIVE/COMPARISON/SENTIMENT/CROSS_DOC/CROSS_COMPANY/UNSUPPORTED)
-- [ ] Context assembly — merge metrics + XBRL data + tables + chunks, deduplicate, rank by relevance
-- [ ] Grounded generation — Gemini Flash with strict system prompt
-- [ ] Response formatting — {answer, citations, confidence, query_type}
-- [ ] Adaptive "missing data" responses — tell user what to add for better answers
-- [ ] `POST /api/query` endpoint
-- **Test:** Ask varied question types. "How's the top line?" should resolve to revenue via jargon map.
+- [x] Query classifier — Gemini Flash few-shot prompt returning `{query_type, metrics, section_hint, reasoning}`
+- [x] Financial jargon resolution applied post-classification (adds metrics and `ratios_needed`)
+- [x] Routing logic for 4 query types: NUMERICAL, NARRATIVE, MIXED, SENTIMENT (each tunes top_k and metric/section behavior)
+- [x] Context assembly — markdown sections for ## Extracted Metrics, ## Computed Ratios, ## Relevant Document Excerpts
+- [x] Grounded generation — Gemini Flash with strict 8-rule system prompt (cite [Page N] / [Metric: name], say "I don't have enough information" if context insufficient)
+- [x] Confidence assessment heuristic per query type
+- [x] Empty-retrieval short-circuit (skip LLM call, return canned upload-prompt message)
+- [x] Response formatting — `{answer, citations, query_type, confidence, metrics_used, ratios_computed}`
+- [x] `POST /api/query` endpoint
+- **Test:** 215/215 unit tests pass. "How's the top line?" resolves to revenue via jargon map.
 
-### Phase 6: Frontend
-**Goal:** Usable UI — search companies, upload docs, ask questions, see answers
+> **Note:** Original phase listed 7 query types including CROSS_DOC, CROSS_COMPANY, UNSUPPORTED. The first two collapsed when XBRL was dropped (CROSS_DOC is now naturally handled by passing multiple `document_ids`; CROSS_COMPANY is gone). UNSUPPORTED is handled by the empty-retrieval short-circuit instead of a dedicated type.
 
-- [ ] Unified search bar — detects ticker vs file drop
-- [ ] Company panel — metrics display, trends, verified badges
-- [ ] Document panel — upload (drag-drop, 10MB limit), processing status
-- [ ] Chat panel — question input, answer display with citations and confidence
-- [ ] Metrics card component — key numbers with YoY change arrows
-- [ ] Error handling — file too large, upload failed, server cold start ("waking up...")
-- [ ] Connect all components to backend APIs
-- **Test:** Full browser flow — search ticker → see metrics → upload filing → ask narrative question → get cited answer
+### Phase 6: Frontend ✅
+**Goal:** Usable UI — upload docs, ask questions, see answers with citations
 
-### Phase 7: Sentiment + Cross-Company + Deploy
-**Goal:** Sentiment analysis, cross-company comparison, deployed live at $0
+- [x] Two-panel layout (documents left, chat right)
+- [x] UploadZone — drag-drop, 10MB/file + 40MB total client-side validation
+- [x] DocumentList — selection checkboxes, delete button, status badge with 2.5s polling for processing docs
+- [x] ChatPanel — question textarea, answer bubbles with confidence/query_type tags, expandable citation list
+- [x] Adaptive empty state — prompts user to upload when no ready docs
+- [x] Error handling — file too large, upload failed, backend unreachable, document still processing (409)
+- [x] Shared TS types mirroring backend Pydantic models
+- [x] `lib/api.ts` fetch wrapper with `ApiError` class
+- **Test:** `tsc -b && vite build` clean, dev server boots and serves 200. Live browser flow still requires manual verification with running backend.
 
-- [ ] FinBERT sentiment on MD&A chunks — quantitative + qualitative signals combined
-- [ ] Cross-document queries — query across multiple uploaded documents
-- [ ] Cross-company comparison — compare metrics from XBRL for different tickers
-- [ ] `GET /api/companies/{ticker}/compare?with=MSFT`
-- [ ] Deploy backend to Render (Dockerfile, env vars)
-- [ ] Deploy frontend to Vercel
-- [ ] Neon database already provisioned
+### Phase 7: Sentiment + Deploy
+**Goal:** FinBERT sentiment on MD&A, multi-doc verification, deployed live at $0
+
+- [ ] FinBERT sentiment service on MD&A chunks — combine quantitative YoY signals with qualitative tone scores
+- [ ] Multi-document cross-doc query verification (currently supported via `document_ids` but untested with multiple periods)
+- [ ] End-to-end test against live Neon database
+- [ ] Backend Dockerfile + Render deployment (env vars: DATABASE_URL, GEMINI_API_KEY, FRONTEND_URL)
+- [ ] Frontend deployment to Vercel (env: VITE_API_URL)
 - [ ] CORS configuration for production domains
-- [ ] Cold-start UX handling in frontend
-- **Test:** Full flow on live deployed URL. Compare Apple vs Microsoft margins. Get sentiment analysis on uploaded 10-Q.
+- [ ] Cold-start UX handling in frontend ("waking up the server…")
+- **Test:** Full flow on live deployed URL. Upload a 10-Q, ask narrative + numerical + sentiment questions, verify citations.
 
 ---
 
@@ -682,25 +535,22 @@ These decisions are informed by research into existing projects (conducted 2026-
 
 | Project | What it does | What it doesn't do |
 |---------|-------------|-------------------|
-| [SEC Insights](https://github.com/run-llama/sec-insights) (LlamaIndex) | Most polished SEC RAG app. Next.js + FastAPI + pgvector + OpenAI. PDF viewer with citation highlighting. | No XBRL, no structured tables, no metrics computation, no sentiment, no ticker search. Text-only RAG. Paid (OpenAI). |
-| [FinanceRAG](https://github.com/nik2401/FinanceRAG-Investment-Research-Assistant) | FastAPI + PostgreSQL + Gemini. SEC EDGAR integration. | No structured table extraction, no XBRL cross-referencing, no computed ratios, no FinBERT. |
+| [SEC Insights](https://github.com/run-llama/sec-insights) (LlamaIndex) | Most polished SEC RAG app. Next.js + FastAPI + pgvector + OpenAI. PDF viewer with citation highlighting. | No structured table extraction, no metrics computation, no computed ratios, no domain-specific embeddings. Text-only RAG. Paid (OpenAI). |
+| [FinanceRAG](https://github.com/nik2401/FinanceRAG-Investment-Research-Assistant) | FastAPI + PostgreSQL + Gemini. SEC EDGAR integration. | No structured table extraction, no computed ratios, no FinBERT embeddings. |
 | [FinSage](https://arxiv.org/abs/2504.14493) (research paper) | Multi-modal preprocessing, HyDE query expansion, DPO-tuned re-ranking. 92.51% recall. | Academic — not a deployable web app with UI. |
-| [EdgarTools](https://github.com/dgunning/edgartools) | Best XBRL library. Parses all filing types. 32K+ filing mappings. | Library only — no RAG, no Q&A, no end-user UI. |
-| [Finbot](https://github.com/deepakb41/Finbot) | LangChain + RAG for 10-K/10-Q. Conversational. | Text-only RAG, no structured data, no XBRL. |
+| [Finbot](https://github.com/deepakb41/Finbot) | LangChain + RAG for 10-K/10-Q. Conversational. | Text-only RAG, no structured table extraction, no computed ratios, no domain-specific intelligence layer. |
 
 ### What FinSight does that none of them do
 
-1. **RAG + XBRL in one app** — narrative analysis from documents + verified structured metrics from EDGAR. Nobody combines both.
-2. **Ticker-only mode** — get financial analysis without uploading anything. Most tools require file upload.
-3. **Computed financial ratios** — margins, growth rates, revenue mix computed from structured data. Others return text answers.
-4. **FinBERT domain-specific retrieval + sentiment** — finance-trained embeddings and sentiment, not generic models.
-5. **XBRL cross-verification** — when PDF is uploaded, verify extracted numbers against XBRL. Nobody does this.
-6. **Cross-company comparison** — compare any two public companies using standardized XBRL data.
-7. **Free deployment** — $0 total cost. SEC Insights requires paid OpenAI API.
+1. **Dual-path PDF extraction** — both structured table extraction (parsed to a metrics table) AND text RAG. Other tools are text-only.
+2. **Computed financial ratios** — margins, growth rates, leverage computed in code from extracted metrics. Others ask the LLM to do it (unreliable).
+3. **Financial jargon + synonym resolution as data** — "top line", "margins", "leverage" map to concrete metrics before retrieval. Generic RAG asks the LLM to figure it out.
+4. **FinBERT domain-specific retrieval + sentiment** — finance-trained embeddings, not generic models.
+5. **Free deployment** — $0 total cost. SEC Insights requires paid OpenAI API.
 
 ### What existing projects do better (learn from them)
 
-- **SEC Insights**: PDF viewer with citation highlighting — worth studying for Phase 2+ UI
+- **SEC Insights**: PDF viewer with citation highlighting — worth studying for a future UI enhancement
 - **FinSage**: HyDE query expansion and DPO re-ranking — worth reading the paper for retrieval improvements
 
 ---
@@ -723,17 +573,20 @@ These decisions have been discussed and confirmed. Don't re-debate them in futur
 | 10 | File limits | 10MB per file, 4 files max, 40MB total | Covers all SEC filings, fits in Render RAM | 2026-04-11 |
 | 11 | Deployment | Vercel (frontend) + Render (backend) + Neon (DB) | All free tier, $0 total cost | 2026-04-11 |
 | 12 | Sentiment approach | Within-document YoY comparisons + FinBERT on MD&A | Grounded in document data, no external market data | 2026-04-11 |
-| 13 | Metrics table | Yes, separate flattened table with source tracking | Instant SQL lookup, tracks extracted vs XBRL source | 2026-04-11 |
+| 13 | Metrics table | Yes, separate flattened table | Instant SQL lookup, decoupled from raw table JSON | 2026-04-11 |
 | 14 | Processing strategy | One file at a time (not parallel) | Keeps peak RAM under 512MB on Render free tier | 2026-04-11 |
-| 15 | XBRL integration | EdgarTools library (not raw EDGAR API) | Mature, 32K+ filing mappings, handles edge cases | 2026-04-11 |
+| 15 | ~~XBRL integration~~ | ~~EdgarTools library~~ | **Reversed — see Decision #19** | 2026-04-11 |
 | 16 | Financial intelligence | Hand-built synonyms + jargon + ratios | ~60 synonyms, ~30 jargon, ~20 ratios. Domain knowledge as data. | 2026-04-11 |
-| 17 | Input modes | Three: ticker search, document upload, combined | One smart UI, no mode selection. System detects input type. | 2026-04-11 |
-| 18 | Cross-company comparison | Via XBRL standardized concepts | EdgarTools handles concept normalization across companies | 2026-04-11 |
+| 17 | ~~Three input modes~~ | ~~Ticker search, document upload, combined~~ | **Reversed — see Decision #19** | 2026-04-11 |
+| 18 | ~~Cross-company comparison~~ | ~~Via XBRL standardized concepts~~ | **Reversed — see Decision #19** | 2026-04-11 |
+| 19 | **Drop XBRL/EdgarTools entirely** | RAG-only over uploaded PDFs | Scope simplification: the dual-path PDF extraction + financial intelligence layer + grounded RAG is already differentiated enough vs generic RAG demos. XBRL added significant scope (ticker search, cross-company, cross-verification, two pipelines) for marginal portfolio value. Cleaner story: "domain-aware RAG for SEC filings." | 2026-04-12 |
+| 20 | Query types | 4 (NUMERICAL, NARRATIVE, MIXED, SENTIMENT) instead of 7 | CROSS_DOC handled by passing multiple `document_ids`. CROSS_COMPANY gone with XBRL. UNSUPPORTED handled by empty-retrieval short-circuit. | 2026-04-12 |
+| 21 | UI layout | Two static panels (docs left, chat right) instead of unified "smart input" | Original mockup mixed ticker search and file drop into one input. With ticker search gone the unified input lost its purpose; explicit upload zone + doc list + chat is clearer. | 2026-04-12 |
 
 ---
 
 ## Current Status
 
-**Phase:** Not started — CLAUDE.md finalized, ready for Phase 1.
+**Phase:** Phase 6 complete. Phases 1–6 done; Phase 7 (sentiment + deploy) is the only remaining work.
 
-**Next step:** Start Phase 1 — project scaffold, FastAPI skeleton, database setup, React scaffold.
+**Next step:** Commit Phase 6 frontend, then Phase 7 — FinBERT sentiment service on MD&A chunks, end-to-end test against live Neon DB, and deployment to Render + Vercel.

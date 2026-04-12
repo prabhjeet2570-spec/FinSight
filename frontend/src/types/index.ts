@@ -6,11 +6,8 @@ export interface DocumentResponse {
   id: string;
   filename: string | null;
   company: string;
-  ticker: string | null;
   filing_type: string | null;
   period: string | null;
-  fiscal_year: string | null;
-  source: string;
   uploaded_at: string;
   page_count: number | null;
   status: DocumentStatus;
@@ -40,8 +37,6 @@ export interface MetricResponse {
   prior_period: string | null;
   page_num: number | null;
   table_type: string | null;
-  source: string;
-  verified: boolean;
 }
 
 export type CitationSource = 'text_chunk' | 'metric' | 'ratio';

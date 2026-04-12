@@ -202,7 +202,6 @@ For the quarterly period ended September 28, 2025
 """
 md = detect_metadata("aapl-10q-q3-2025.pdf", first_page)
 check("company detected", md.company.startswith("Apple"), True)
-check("ticker detected", md.ticker, "AAPL")
 check("filing type", md.filing_type, "10-Q")
 check("period", md.period, "Q3 2025")
 

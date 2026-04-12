@@ -87,13 +87,13 @@ async def upload_documents(
 
             row = await conn.fetchrow(
                 """
-                INSERT INTO documents (filename, company, source, status)
-                VALUES ($1, $2, 'upload', 'processing')
-                RETURNING id, filename, company, ticker, filing_type, period,
-                          fiscal_year, source, uploaded_at, page_count, status
+                INSERT INTO documents (filename, company, status)
+                VALUES ($1, $2, 'processing')
+                RETURNING id, filename, company, filing_type, period,
+                          uploaded_at, page_count, status
                 """,
                 filename,
-                "Unknown",  # placeholder until extraction detects company
+                "Unknown",
             )
 
             documents.append(DocumentResponse(**dict(row)))
@@ -119,8 +119,8 @@ async def list_documents():
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, filename, company, ticker, filing_type, period,
-                   fiscal_year, source, uploaded_at, page_count, status
+            SELECT id, filename, company, filing_type, period,
+                   uploaded_at, page_count, status
             FROM documents
             ORDER BY uploaded_at DESC
             """
@@ -157,7 +157,7 @@ async def get_document_tables(document_id: UUID):
 
         rows = await conn.fetch(
             """
-            SELECT id, page_num, table_type, period, headers, rows
+            SELECT id, page_num, table_type, headers, rows
             FROM extracted_tables
             WHERE document_id = $1
             ORDER BY page_num
@@ -169,7 +169,6 @@ async def get_document_tables(document_id: UUID):
             id=r["id"],
             page_num=r["page_num"],
             table_type=r["table_type"],
-            period=r["period"],
             headers=json.loads(r["headers"]) if r["headers"] else None,
             rows=json.loads(r["rows"]) if r["rows"] else [],
         )
@@ -190,7 +189,7 @@ async def get_document_metrics(document_id: UUID):
         rows = await conn.fetch(
             """
             SELECT id, metric_name, value, prior_value, change_pct, unit,
-                   period, prior_period, page_num, table_type, source, verified
+                   period, prior_period, page_num, table_type
             FROM metrics
             WHERE document_id = $1
             ORDER BY metric_name
@@ -209,8 +208,6 @@ async def get_document_metrics(document_id: UUID):
             prior_period=r["prior_period"],
             page_num=r["page_num"],
             table_type=r["table_type"],
-            source=r["source"],
-            verified=r["verified"],
         )
         for r in rows
     ]

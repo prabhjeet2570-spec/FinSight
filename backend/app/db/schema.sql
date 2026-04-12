@@ -6,12 +6,8 @@ CREATE TABLE IF NOT EXISTS documents (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     filename    TEXT,
     company     TEXT NOT NULL,
-    ticker      TEXT,
-    cik         TEXT,
     filing_type TEXT,
     period      TEXT,
-    fiscal_year TEXT,
-    source      TEXT DEFAULT 'upload',
     uploaded_at TIMESTAMPTZ DEFAULT now(),
     page_count  INT,
     status      TEXT DEFAULT 'processing'
@@ -35,10 +31,8 @@ CREATE TABLE IF NOT EXISTS extracted_tables (
     document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
     page_num    INT,
     table_type  TEXT,
-    period      TEXT,
     headers     JSONB,
     rows        JSONB NOT NULL,
-    raw_text    TEXT,
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 
@@ -55,8 +49,6 @@ CREATE TABLE IF NOT EXISTS metrics (
     prior_period  TEXT,
     page_num      INT,
     table_type    TEXT,
-    source        TEXT DEFAULT 'extracted',
-    verified      BOOLEAN DEFAULT FALSE,
     created_at    TIMESTAMPTZ DEFAULT now()
 );
 
@@ -68,5 +60,3 @@ CREATE INDEX IF NOT EXISTS idx_chunks_section ON text_chunks(section);
 CREATE INDEX IF NOT EXISTS idx_tables_document ON extracted_tables(document_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_document ON metrics(document_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_name ON metrics(metric_name);
-CREATE INDEX IF NOT EXISTS idx_metrics_source ON metrics(source);
-CREATE INDEX IF NOT EXISTS idx_documents_ticker ON documents(ticker);

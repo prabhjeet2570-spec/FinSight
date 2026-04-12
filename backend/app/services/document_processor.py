@@ -70,18 +70,14 @@ async def process_document(document_id: UUID, pdf_path: str, filename: str) -> N
                     """
                     UPDATE documents
                     SET company = $1,
-                        ticker = $2,
-                        filing_type = $3,
-                        period = $4,
-                        fiscal_year = $5,
-                        page_count = $6
-                    WHERE id = $7
+                        filing_type = $2,
+                        period = $3,
+                        page_count = $4
+                    WHERE id = $5
                     """,
                     metadata.company,
-                    metadata.ticker,
                     metadata.filing_type,
                     metadata.period,
-                    metadata.fiscal_year,
                     result.page_count,
                     document_id,
                 )
@@ -118,18 +114,16 @@ async def process_document(document_id: UUID, pdf_path: str, filename: str) -> N
                             document_id,
                             table.page_num,
                             table.table_type,
-                            None,  # period — populated by metric flattening, not table
                             json.dumps(table.headers),
                             json.dumps(table.rows),
-                            table.raw_text,
                         )
                         for table in result.all_tables
                     ]
                     await conn.executemany(
                         """
                         INSERT INTO extracted_tables
-                            (document_id, page_num, table_type, period, headers, rows, raw_text)
-                        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
+                            (document_id, page_num, table_type, headers, rows)
+                        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
                         """,
                         table_rows,
                     )
@@ -148,8 +142,6 @@ async def process_document(document_id: UUID, pdf_path: str, filename: str) -> N
                             m.prior_period,
                             m.page_num,
                             m.table_type,
-                            "extracted",
-                            False,
                         )
                         for m in metrics
                     ]
@@ -157,8 +149,8 @@ async def process_document(document_id: UUID, pdf_path: str, filename: str) -> N
                         """
                         INSERT INTO metrics
                             (document_id, metric_name, value, prior_value, change_pct,
-                             unit, period, prior_period, page_num, table_type, source, verified)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                             unit, period, prior_period, page_num, table_type)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                         """,
                         metric_rows,
                     )

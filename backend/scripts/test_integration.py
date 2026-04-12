@@ -172,7 +172,6 @@ def run_test():
         first_page = result.pages[0].text
         md = detect_metadata("apple-10q-q3-2025.pdf", first_page)
         check("company is Apple", "Apple" in md.company, f"got {md.company!r}")
-        check("ticker is AAPL", md.ticker == "AAPL", f"got {md.ticker!r}")
         check("filing type 10-Q", md.filing_type == "10-Q", f"got {md.filing_type!r}")
         # Period detection from "Three months ended September 28, 2025" -> Q3 2025
         check("period detected", md.period is not None, f"got {md.period!r}")
@@ -208,7 +207,7 @@ def run_test():
 
         # 6. Print a summary of what we extracted
         print("\n[6] Extraction summary")
-        print(f"  Document: {md.company} ({md.ticker}) {md.filing_type} {md.period}")
+        print(f"  Document: {md.company} {md.filing_type} {md.period}")
         print(f"  Pages: {result.page_count}")
         print(f"  Tables: {len(result.all_tables)}")
         print(f"  Chunks: {len(chunks)}")
