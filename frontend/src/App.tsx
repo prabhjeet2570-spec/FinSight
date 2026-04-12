@@ -1,6 +1,56 @@
-import './App.css'
+import { useCallback, useEffect, useState } from 'react';
+import './App.css';
+import { ChatPanel } from './components/ChatPanel';
+import { DocumentList } from './components/DocumentList';
+import { UploadZone } from './components/UploadZone';
+import { api } from './lib/api';
+import type { DocumentResponse } from './types';
 
 function App() {
+  const [documents, setDocuments] = useState<DocumentResponse[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const docs = await api.listDocuments();
+        setDocuments(docs);
+      } catch {
+        setLoadError('Could not reach the FinSight backend. Make sure it is running on port 8000.');
+      }
+    })();
+  }, []);
+
+  const handleUploaded = useCallback((newDocs: DocumentResponse[]) => {
+    setDocuments((prev) => [...newDocs, ...prev]);
+  }, []);
+
+  const handleStatusUpdate = useCallback(
+    (id: string, patch: Partial<DocumentResponse>) => {
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === id ? { ...d, ...patch } : d)),
+      );
+    },
+    [],
+  );
+
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }, []);
+
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await api.deleteDocument(id);
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
+      setSelectedIds((prev) => prev.filter((x) => x !== id));
+    } catch {
+      // surface in UI later if needed
+    }
+  }, []);
+
   return (
     <div className="app">
       <header className="header">
@@ -8,27 +58,37 @@ function App() {
           <span className="logo-fin">Fin</span>
           <span className="logo-sight">Sight</span>
         </h1>
+        <p className="tagline">Grounded financial intelligence for SEC filings</p>
       </header>
 
-      <main className="main">
-        <div className="search-container">
-          <input
-            type="text"
-            className="search-input"
-            placeholder='Search a company or drop a filing...'
-            disabled
-          />
-          <p className="search-hint">
-            Type "Apple" or "AAPL" for instant analysis. Drop a PDF for deep document analysis.
-          </p>
-        </div>
-      </main>
+      <main className="main-grid">
+        <aside className="docs-pane">
+          <section className="pane-section">
+            <h2>Documents</h2>
+            <UploadZone existingCount={documents.length} onUploaded={handleUploaded} />
+          </section>
 
-      <footer className="footer">
-        <p>Financial intelligence powered by SEC EDGAR and document RAG</p>
-      </footer>
+          <section className="pane-section docs-list-section">
+            {loadError ? (
+              <p className="docs-empty error-text">{loadError}</p>
+            ) : (
+              <DocumentList
+                documents={documents}
+                selectedIds={selectedIds}
+                onToggleSelect={handleToggleSelect}
+                onDelete={handleDelete}
+                onStatusUpdate={handleStatusUpdate}
+              />
+            )}
+          </section>
+        </aside>
+
+        <section className="chat-pane">
+          <ChatPanel documents={documents} selectedIds={selectedIds} />
+        </section>
+      </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
