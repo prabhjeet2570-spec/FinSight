@@ -22,6 +22,7 @@ class FilingUsed(BaseModel):
     filing_type: str           # '10-K', '10-Q', '8-K', etc.
     period_label: str | None   # 'Q3 2025', 'FY 2024'
     accession_number: str
+    primary_doc_url: str | None = None
 
 
 class Citation(BaseModel):

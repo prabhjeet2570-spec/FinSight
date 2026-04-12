@@ -182,7 +182,13 @@ export function ChatPanel() {
 function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
   return (
     <div className="chat-empty">
-      <p className="chat-empty-title">Try asking:</p>
+      <div className="hero-orb" aria-hidden="true" />
+      <h2 className="hero-title">
+        Explore <span className="gradient-text">SEC Filings</span> with AI
+      </h2>
+      <p className="hero-subtitle">
+        Ask about any US public company — revenue, risks, management outlook, and more
+      </p>
       <div className="suggestion-chips">
         {SUGGESTIONS.map((q) => (
           <button key={q} className="suggestion-chip" onClick={() => onSelect(q)}>

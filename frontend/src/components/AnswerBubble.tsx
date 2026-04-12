@@ -1,4 +1,4 @@
-import type { Citation, FilingUsed, QueryResponse, SentimentResult } from '../types';
+import type { FilingUsed, QueryResponse, SentimentResult } from '../types';
 
 export function AnswerBubble({ response }: { response: QueryResponse }) {
   return (
@@ -12,10 +12,7 @@ export function AnswerBubble({ response }: { response: QueryResponse }) {
       <div className="answer-text">{response.answer}</div>
 
       {response.filings_used.length > 0 && (
-        <SourcesList
-          filings={response.filings_used}
-          citations={response.citations}
-        />
+        <SourcesList filings={response.filings_used} />
       )}
     </div>
   );
@@ -42,26 +39,7 @@ function SentimentTag({ sentiment }: { sentiment: SentimentResult }) {
   );
 }
 
-function SourcesList({
-  filings,
-  citations,
-}: {
-  filings: FilingUsed[];
-  citations: Citation[];
-}) {
-  const textCitations = citations.filter(
-    (c) => c.source_type === 'text_chunk' && c.filing_id,
-  );
-
-  const sectionsByFiling = new Map<string, Set<string>>();
-  for (const c of textCitations) {
-    if (!c.filing_id || !c.section) continue;
-    if (!sectionsByFiling.has(c.filing_id)) {
-      sectionsByFiling.set(c.filing_id, new Set());
-    }
-    sectionsByFiling.get(c.filing_id)!.add(c.section);
-  }
-
+function SourcesList({ filings }: { filings: FilingUsed[] }) {
   return (
     <details className="citations">
       <summary>
@@ -72,7 +50,6 @@ function SourcesList({
           const label = [f.ticker, f.filing_type, f.period_label]
             .filter(Boolean)
             .join(' \u00b7 ');
-          const sections = sectionsByFiling.get(f.filing_id);
           return (
             <li key={f.filing_id}>
               {f.primary_doc_url ? (
@@ -86,12 +63,6 @@ function SourcesList({
                 </a>
               ) : (
                 <span className="source-filing">{label}</span>
-              )}
-              {sections && sections.size > 0 && (
-                <span className="source-sections">
-                  {' \u2014 '}
-                  {[...sections].join(', ')}
-                </span>
               )}
             </li>
           );

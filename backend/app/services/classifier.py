@@ -59,12 +59,31 @@ You MUST also decide which SEC filings are needed to answer the question.
 Output a `filings_needed` array — each entry has a `form` (filing type) and
 `count` (how many of that type, most recent first).
 
-Rules of thumb:
+Important: There is NO Q4 10-Q filing. Q4 results are reported in the annual 10-K.
+So to cover a full year you need the 10-K (has Q4/annual data) PLUS the 10-Qs (Q1-Q3).
+
+### Available filing types on EDGAR
+
+- **10-K**: Annual report — full financial statements, MD&A, risk factors, business overview, segment data. Most comprehensive.
+- **10-Q**: Quarterly report — quarterly financials, condensed MD&A, updated risk factors. Filed for Q1-Q3 only (Q4 is in 10-K).
+- **8-K**: Current event report — material events like acquisitions, CEO changes, earnings releases, restructurings, lawsuits, guidance updates.
+- **DEF 14A**: Proxy statement — executive compensation, board of directors, shareholder proposals, governance.
+- **20-F**: Annual report for foreign companies listed in the US (replaces 10-K for foreign issuers like Alibaba, Toyota, SAP, Shell).
+- **S-1**: IPO registration statement — business overview, financials, risk factors, use of proceeds. Filed before going public.
+- **4**: Insider trading form — stock purchases/sales by executives and directors.
+
+### Rules of thumb
+
 - Latest snapshot / single-quarter question -> [{"form": "10-Q", "count": 1}]
 - Annual overview, risk factors, business description -> [{"form": "10-K", "count": 1}]
-- Trend / growth / YoY / multi-period -> [{"form": "10-Q", "count": 4}] (or add a 10-K)
-- Recent news / events -> [{"form": "8-K", "count": 5}]
-- Mix of narrative + numbers -> combine, e.g. [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 1}]
+- Trend / growth / "past year" / "over time" / multi-period -> [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 4}] to cover all quarters including Q4
+- Recent news / events / acquisitions / leadership changes -> [{"form": "8-K", "count": 5}]
+- "How is X doing" / general performance -> [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 2}] for recent + annual context
+- Executive pay / board / governance / proxy -> [{"form": "DEF 14A", "count": 1}]
+- Foreign companies (Alibaba, Toyota, SAP, etc.) -> use "20-F" instead of "10-K" for annual reports
+- IPO / "when did X go public" / S-1 -> [{"form": "S-1", "count": 1}]
+- Insider buying/selling -> [{"form": "4", "count": 10}]
+- Multi-year comparisons -> [{"form": "10-K", "count": 3}] for 3 years of annual data
 - When unsure, default to [{"form": "10-Q", "count": 1}]
 
 ## Output Format
@@ -75,7 +94,7 @@ Return ONLY valid JSON (no markdown, no backticks):
   "companies": ["TICKER1", "TICKER2"],
   "metrics": ["list of canonical metric names the question is about"],
   "section_hint": "MD&A|Risk Factors|Financial Statements|Notes|null",
-  "filings_needed": [{"form": "10-Q|10-K|8-K", "count": 1}],
+  "filings_needed": [{"form": "10-K|10-Q|8-K|DEF 14A|20-F|S-1|4", "count": 1}],
   "reasoning": "one sentence explaining classification"
 }
 
@@ -107,7 +126,7 @@ User: "Is Tesla management optimistic about next year?"
 {"query_type": "SENTIMENT", "companies": ["TSLA"], "metrics": [], "section_hint": "MD&A", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Management outlook is in the latest quarterly MD&A"}
 
 User: "How is Apple's revenue trending over the past year?"
-{"query_type": "NUMERICAL", "companies": ["AAPL"], "metrics": ["revenue"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 4}], "reasoning": "Trend question needs multiple quarters to show the trajectory"}
+{"query_type": "NUMERICAL", "companies": ["AAPL"], "metrics": ["revenue"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 4}], "reasoning": "Past year trend needs the 10-K for Q4/annual data plus recent 10-Qs — there is no Q4 10-Q"}
 
 User: "Compare Microsoft and Google operating margins"
 {"query_type": "NUMERICAL", "companies": ["MSFT", "GOOGL"], "metrics": ["operating_income", "revenue"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Cross-company comparison using latest quarterly data for each"}
@@ -115,17 +134,68 @@ User: "Compare Microsoft and Google operating margins"
 User: "What did Meta say about AI in their last 10-Q?"
 {"query_type": "NARRATIVE", "companies": ["META"], "metrics": [], "section_hint": "MD&A", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Qualitative question about Meta's AI commentary in their latest 10-Q"}
 
-User: "What's Tesla's business overview and latest earnings?"
-{"query_type": "MIXED", "companies": ["TSLA"], "metrics": ["revenue", "net_income", "eps_diluted"], "section_hint": null, "filings_needed": [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 1}], "reasoning": "Business overview is in 10-K, latest earnings in recent 10-Q — need both"}
-
 User: "Any recent news about NVIDIA?"
 {"query_type": "NARRATIVE", "companies": ["NVDA"], "metrics": [], "section_hint": null, "filings_needed": [{"form": "8-K", "count": 5}], "reasoning": "Recent events and news are reported in 8-K filings"}
 
-User: "How is AMZN's bottom line?"
-{"query_type": "NUMERICAL", "companies": ["AMZN"], "metrics": ["net_income"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Bottom line is jargon for net income, latest quarter"}
+User: "How is Netflix doing in past 1 year?"
+{"query_type": "MIXED", "companies": ["NFLX"], "metrics": ["revenue", "net_income", "eps_diluted"], "section_hint": null, "filings_needed": [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 4}], "reasoning": "Past year overview needs the annual 10-K for Q4 data plus quarterly 10-Qs for the full picture"}
+
+User: "How much does Tim Cook get paid? What's Apple's executive compensation?"
+{"query_type": "NARRATIVE", "companies": ["AAPL"], "metrics": [], "section_hint": null, "filings_needed": [{"form": "DEF 14A", "count": 1}], "reasoning": "Executive compensation details are in the proxy statement (DEF 14A), not in 10-K/10-Q"}
+
+User: "Who is on NVIDIA's board of directors?"
+{"query_type": "NARRATIVE", "companies": ["NVDA"], "metrics": [], "section_hint": null, "filings_needed": [{"form": "DEF 14A", "count": 1}], "reasoning": "Board composition and governance info is in the proxy statement"}
+
+User: "What are Alibaba's risk factors and revenue?"
+{"query_type": "MIXED", "companies": ["BABA"], "metrics": ["revenue"], "section_hint": "Risk Factors", "filings_needed": [{"form": "20-F", "count": 1}], "reasoning": "Alibaba is a foreign private issuer — uses 20-F instead of 10-K for annual reports"}
+
+User: "How much debt does AT&T have?"
+{"query_type": "NUMERICAL", "companies": ["T"], "metrics": ["long_term_debt", "total_debt", "current_liabilities"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Balance sheet debt metrics from latest quarterly filing"}
+
+User: "What's Amazon's free cash flow and capex spending?"
+{"query_type": "NUMERICAL", "companies": ["AMZN"], "metrics": ["free_cash_flow", "capital_expenditures", "operating_cash_flow"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Cash flow statement metrics from the latest quarter"}
+
+User: "How much did Apple spend on share buybacks last year?"
+{"query_type": "NUMERICAL", "companies": ["AAPL"], "metrics": ["share_repurchases"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-K", "count": 1}], "reasoning": "Annual buyback total is in the 10-K"}
+
+User: "Break down Microsoft's revenue by segment"
+{"query_type": "MIXED", "companies": ["MSFT"], "metrics": ["revenue"], "section_hint": "Notes", "filings_needed": [{"form": "10-K", "count": 1}], "reasoning": "Segment breakdowns are in the Notes to Financial Statements in the annual report"}
+
+User: "How much does Coca-Cola pay in dividends?"
+{"query_type": "NUMERICAL", "companies": ["KO"], "metrics": ["dividends_per_share", "dividends_paid"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Latest dividend data from the most recent quarterly filing"}
+
+User: "Did Disney make any acquisitions recently?"
+{"query_type": "NARRATIVE", "companies": ["DIS"], "metrics": [], "section_hint": null, "filings_needed": [{"form": "8-K", "count": 10}], "reasoning": "Acquisitions are reported as material events in 8-K filings"}
+
+User: "TSLA eps"
+{"query_type": "NUMERICAL", "companies": ["TSLA"], "metrics": ["eps_basic", "eps_diluted"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "User gave a ticker directly — latest EPS from the most recent 10-Q"}
+
+User: "Compare profit margins and revenue growth of Apple, Microsoft, and Amazon"
+{"query_type": "NUMERICAL", "companies": ["AAPL", "MSFT", "AMZN"], "metrics": ["revenue", "gross_profit", "operating_income", "net_income"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 2}], "reasoning": "Three-way comparison needs latest quarter plus prior quarter to compute growth — applied per company"}
+
+User: "How much does Google spend on R&D?"
+{"query_type": "NUMERICAL", "companies": ["GOOGL"], "metrics": ["research_and_development"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "R&D spending is a line item on the income statement"}
+
+User: "What drove the increase in JPMorgan's operating expenses?"
+{"query_type": "MIXED", "companies": ["JPM"], "metrics": ["operating_expenses", "selling_general_admin"], "section_hint": "MD&A", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Needs the number (metric) plus management's explanation (MD&A)"}
+
+User: "How has Tesla's stock-based compensation changed over the last 3 years?"
+{"query_type": "NUMERICAL", "companies": ["TSLA"], "metrics": ["stock_based_compensation"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-K", "count": 3}], "reasoning": "Multi-year trend — need 3 annual reports to compare"}
+
+User: "What is Toyota's business overview?"
+{"query_type": "NARRATIVE", "companies": ["TM"], "metrics": [], "section_hint": null, "filings_needed": [{"form": "20-F", "count": 1}], "reasoning": "Toyota is a foreign issuer — uses 20-F instead of 10-K"}
+
+User: "Are there any insider trades at Palantir recently?"
+{"query_type": "NARRATIVE", "companies": ["PLTR"], "metrics": [], "section_hint": null, "filings_needed": [{"form": "4", "count": 10}], "reasoning": "Insider buy/sell transactions are reported on Form 4"}
+
+User: "What's Uber's latest guidance and outlook?"
+{"query_type": "SENTIMENT", "companies": ["UBER"], "metrics": [], "section_hint": "MD&A", "filings_needed": [{"form": "10-Q", "count": 1}, {"form": "8-K", "count": 3}], "reasoning": "Guidance is in MD&A of the latest 10-Q, plus recent 8-Ks often contain earnings guidance updates"}
 
 User: "How is the economy doing?"
-{"query_type": "NARRATIVE", "companies": [], "metrics": [], "section_hint": null, "filings_needed": [], "reasoning": "No specific public company mentioned"}
+{"query_type": "NARRATIVE", "companies": [], "metrics": [], "section_hint": null, "filings_needed": [], "reasoning": "No specific public company mentioned — cannot look up SEC filings"}
+
+User: "What's the best stock to buy?"
+{"query_type": "NARRATIVE", "companies": [], "metrics": [], "section_hint": null, "filings_needed": [], "reasoning": "No specific company and asking for investment advice — cannot answer from SEC filings"}
 
 Now classify this query:
 """
