@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek/deepseek-chat-v3-0324"
 
     # SEC EDGAR — required by SEC's fair-access policy. Format: "App Name email@domain.com"
-    edgar_user_agent: str = "FinSight prabhjeet@nyu.edu"
+    edgar_user_agent: str = ""
 
     # CORS — comma-separated origins for production
     frontend_url: str = "http://localhost:5173"
