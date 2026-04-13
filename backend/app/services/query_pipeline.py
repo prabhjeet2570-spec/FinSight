@@ -16,6 +16,7 @@ Public entry points:
         task on the cache-miss path.
 """
 import logging
+import time
 from uuid import UUID
 
 from app.db.connection import get_pool
@@ -249,9 +250,31 @@ async def run_query_job(
     any exception is captured into the job's `error` field so the
     polling client sees it.
     """
+    t0 = time.monotonic()
     try:
         result = await run_query(question, classification, plan, job_id=job_id)
         await set_result(job_id, result)
+        elapsed = int((time.monotonic() - t0) * 1000)
+        # Log to query_logs
+        try:
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO query_logs
+                        (question, companies, query_type, filings_used, confidence, cache_hit, response_time_ms)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    question,
+                    [c["ticker"] for c in result.get("companies_resolved", [])],
+                    result.get("query_type"),
+                    [f"{f.get('ticker')} {f.get('filing_type')} {f.get('period_label')}" for f in result.get("filings_used", [])],
+                    result.get("confidence"),
+                    False,
+                    elapsed,
+                )
+        except Exception as log_err:
+            logger.warning(f"Failed to log async query: {log_err}")
     except Exception as e:
         logger.exception(f"Job {job_id} failed")
         await set_error(job_id, str(e))

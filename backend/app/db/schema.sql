@@ -85,3 +85,18 @@ CREATE TABLE IF NOT EXISTS metrics (
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_filing ON metrics(filing_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_name ON metrics(metric_name);
+
+-- Query logs (analytics — one row per query, never deleted)
+CREATE TABLE IF NOT EXISTS query_logs (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    question         TEXT NOT NULL,
+    companies        TEXT[],
+    query_type       TEXT,
+    filings_used     TEXT[],
+    confidence       TEXT,
+    cache_hit        BOOLEAN,
+    response_time_ms INT,
+    created_at       TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_query_logs_created ON query_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_query_logs_companies ON query_logs USING GIN(companies);

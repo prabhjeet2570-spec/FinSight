@@ -11,10 +11,12 @@ Phase 10 dispatch:
     GET /api/query/jobs/{id} until status is 'ready' or 'failed'.
 """
 import logging
+import time
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import JSONResponse
 
+from app.db.connection import get_pool
 from app.models.query import (
     QueryJobAccepted,
     QueryJobStatus,
@@ -28,6 +30,36 @@ from app.services.job_queue import create_job, get_job
 from app.services.query_pipeline import run_query, run_query_job
 
 logger = logging.getLogger(__name__)
+
+
+async def _log_query(
+    question: str,
+    companies: list[str],
+    query_type: str | None,
+    filings_used: list[str],
+    confidence: str | None,
+    cache_hit: bool,
+    response_time_ms: int,
+) -> None:
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO query_logs
+                    (question, companies, query_type, filings_used, confidence, cache_hit, response_time_ms)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                question,
+                companies,
+                query_type,
+                filings_used,
+                confidence,
+                cache_hit,
+                response_time_ms,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to log query: {e}")
 
 router = APIRouter(prefix="/api", tags=["query"])
 
@@ -132,7 +164,18 @@ async def query_endpoint(req: QueryRequest, background_tasks: BackgroundTasks):
     # 4. Sync (cache hit) vs async (cache miss) dispatch
     if not plan.needs_ingestion:
         logger.info(f"Cache hit — running pipeline synchronously")
+        t0 = time.monotonic()
         result = await run_query(req.question, classification, plan)
+        elapsed = int((time.monotonic() - t0) * 1000)
+        await _log_query(
+            question=req.question,
+            companies=[c.ticker for c in resolution.resolved],
+            query_type=result.get("query_type"),
+            filings_used=[f"{f.get('ticker')} {f.get('filing_type')} {f.get('period_label')}" for f in result.get("filings_used", [])],
+            confidence=result.get("confidence"),
+            cache_hit=True,
+            response_time_ms=elapsed,
+        )
         return QueryResponse(**result)
 
     # Some filings need fetching from EDGAR — go async
