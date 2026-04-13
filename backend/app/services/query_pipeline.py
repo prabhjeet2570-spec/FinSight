@@ -156,10 +156,10 @@ async def run_query(
             "citations": [],
             "query_type": classification.get("query_type", "MIXED"),
             "confidence": "low",
-            "companies_resolved": [
-                {"ticker": t.company.ticker, "name": t.company.name, "cik": t.company.cik}
+            "companies_resolved": list({
+                t.company.ticker: {"ticker": t.company.ticker, "name": t.company.name, "cik": t.company.cik}
                 for t in plan.targets
-            ],
+            }.values()),
             "filings_used": [],
             "metrics_used": None,
             "ratios_computed": None,
@@ -203,20 +203,36 @@ async def run_query(
     if job_id:
         await set_progress(job_id, "Generating answer…")
 
+    # Load filing metadata (needed for both generation context and response payload)
+    filings_used = await _load_filings_used(filing_ids)
+
+    # Build filing_id -> period_label map for consistent period display
+    filing_period_map: dict = {}
+    for f in filings_used:
+        if f.get("period_label"):
+            filing_period_map[f["filing_id"]] = f["period_label"]
+
     payload = await generate_answer(
         question=question,
         retrieval_result=retrieval_result,
         classification=classification,
         sentiment=sentiment_result,
         filing_ticker_map=filing_ticker_map,
+        filing_period_map=filing_period_map,
+        filings_used=filings_used,
     )
 
     # Enrich the payload with the new Phase 10 fields
-    payload["companies_resolved"] = [
-        {"ticker": t.company.ticker, "name": t.company.name, "cik": t.company.cik}
-        for t in plan.targets
-    ]
-    payload["filings_used"] = await _load_filings_used(filing_ids)
+    seen_tickers: set[str] = set()
+    unique_companies: list[dict] = []
+    for t in plan.targets:
+        if t.company.ticker not in seen_tickers:
+            seen_tickers.add(t.company.ticker)
+            unique_companies.append(
+                {"ticker": t.company.ticker, "name": t.company.name, "cik": t.company.cik}
+            )
+    payload["companies_resolved"] = unique_companies
+    payload["filings_used"] = filings_used
 
     return payload
 

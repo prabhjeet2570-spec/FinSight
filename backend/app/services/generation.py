@@ -1,4 +1,4 @@
-"""Grounded answer generation using Groq (Llama 3.3 70B).
+"""Grounded answer generation via OpenAI-compatible LLM endpoint.
 
 Takes retrieval results (text chunks, metrics, computed ratios) and
 generates a strictly grounded answer. The system prompt enforces:
@@ -31,13 +31,31 @@ SEC filings (10-Q, 10-K) fetched on demand from SEC EDGAR.
 3. Do NOT add inline citations like [Page N] or [Metric: name] in your answer. \
 Citations are handled separately by the system.
 4. When presenting numbers, include the unit (e.g., "$94.0 billion", "46.8%").
-5. When a computed ratio is available, present it with its formula context \
-(e.g., "Gross margin is 46.8% (gross profit / revenue)").
-6. For sentiment or outlook questions, ground your assessment in specific \
+5. For sentiment or outlook questions, ground your assessment in specific \
 quotes or metric trends from the filing. Never speculate.
-7. Be concise. Lead with the direct answer, then supporting detail.
-8. If the user asks about a metric that isn't present in the filing, say so \
+6. If the user asks about a metric that isn't present in the filing, say so \
 plainly — don't infer or estimate.
+
+## How to write your answer:
+
+Write a natural, flowing analysis. Do NOT use rigid section headers or a \
+fixed template. Just answer the question thoroughly using the data.
+
+- Lead with the direct answer and key numbers.
+- ALWAYS mention the explicit time period (quarter and year) when presenting any number. \
+Never say "in the current period" or "in the latest quarter" — say the actual period \
+like "in Q1 2026" or "for FY 2025". The context includes period information for each metric.
+- Include relevant trends, YoY changes, and comparisons where the data supports it.
+- If the context includes management commentary or forward-looking statements, \
+weave those in naturally (e.g., "Management noted that...").
+- At the start of your answer, briefly mention which filing(s) the data comes from \
+(e.g., "Based on Apple's FY 2025 10-K and Q3 2025 10-Q, ..."). The filings used are \
+listed in the context. Keep it natural — one short phrase, not a formal citation.
+- End with a brief concluding take — is the picture positive, negative, or mixed?
+- For comparison queries, clearly call out which company leads and by how much.
+- Use **bold** for emphasis on key numbers or takeaways, not as section headers.
+- Use bullet points only when listing several data points — not for every sentence.
+- Keep it concise but thorough. Don't repeat the same point in different words.
 """
 
 
@@ -69,7 +87,8 @@ def _build_context(
         lines = ["## Extracted Metrics"]
         for m in result.metrics:
             tag = _ticker_tag(m.filing_id)
-            parts = [f"{tag}**{m.metric_name}**: {m.value}"]
+            period_tag = f" ({m.period})" if m.period else ""
+            parts = [f"{tag}**{m.metric_name}**{period_tag}: {m.value}"]
             if m.unit:
                 parts.append(f"({m.unit})")
             if m.prior_value is not None:
@@ -77,8 +96,6 @@ def _build_context(
             if m.change_pct is not None:
                 direction = "+" if m.change_pct > 0 else ""
                 parts.append(f"| Change: {direction}{m.change_pct}%")
-            if m.period:
-                parts.append(f"| Period: {m.period}")
             if m.page_num is not None:
                 parts.append(f"[Page {m.page_num}]")
             lines.append(" ".join(parts))
@@ -225,8 +242,8 @@ def _assess_confidence(result: RetrievalResult, classification: dict) -> str:
 def _get_client() -> AsyncOpenAI:
     settings = get_settings()
     return AsyncOpenAI(
-        api_key=settings.groq_api_key,
-        base_url="https://api.groq.com/openai/v1",
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
     )
 
 
@@ -236,8 +253,10 @@ async def generate_answer(
     classification: dict,
     sentiment: AggregatedSentiment | None = None,
     filing_ticker_map: dict | None = None,
+    filing_period_map: dict | None = None,
+    filings_used: list[dict] | None = None,
 ) -> dict:
-    """Generate a grounded answer from retrieval results using Llama 3.3 70B (Groq).
+    """Generate a grounded answer from retrieval results.
 
     Args:
         question: the user's original question
@@ -245,6 +264,7 @@ async def generate_answer(
         classification: output from classify_query
         sentiment: FinBERT sentiment analysis results (for SENTIMENT queries)
         filing_ticker_map: {filing_id: ticker} for multi-company attribution
+        filings_used: list of filing metadata dicts for source attribution
 
     Returns:
         dict with keys: answer, citations, query_type, confidence,
@@ -270,7 +290,19 @@ async def generate_answer(
             "sentiment": None,
         }
 
+    # Build filing source summary for the LLM
+    filing_source_lines = ""
+    if filings_used:
+        parts = []
+        for f in filings_used:
+            label = " ".join(filter(None, [f.get("ticker"), f.get("filing_type"), f.get("period_label")]))
+            if label:
+                parts.append(label)
+        if parts:
+            filing_source_lines = f"\n\n## Filings used\n{', '.join(parts)}"
+
     user_prompt = f"""## Context from SEC filings
+{filing_source_lines}
 
 {context}
 
@@ -283,10 +315,12 @@ Answer the question using ONLY the context above. Do not add inline citations.""
     client = _get_client()
 
     answer = None
-    for attempt in range(3):
+    max_retries = 5
+    for attempt in range(max_retries):
         try:
+            settings = get_settings()
             response = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=settings.llm_model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
@@ -296,14 +330,15 @@ Answer the question using ONLY the context above. Do not add inline citations.""
             answer = response.choices[0].message.content.strip()
             break
         except RateLimitError:
-            if attempt < 2:
-                logger.warning(f"Groq rate limited (attempt {attempt + 1}), retrying...")
-                await asyncio.sleep(2 * (attempt + 1))
+            if attempt < max_retries - 1:
+                wait = min(5 * (2 ** attempt), 60)
+                logger.warning(f"LLM rate limited (attempt {attempt + 1}), retrying in {wait}s...")
+                await asyncio.sleep(wait)
                 continue
-            logger.error("Groq generation rate limited after retries")
+            logger.error("LLM generation rate limited after retries")
             break
         except Exception as e:
-            logger.error(f"Groq generation failed: {e}")
+            logger.error(f"LLM generation failed: {e}")
             break
 
     if answer is None:
@@ -314,6 +349,8 @@ Answer the question using ONLY the context above. Do not add inline citations.""
         )
 
     # Build response payload
+    ftm = filing_ticker_map or {}
+    fpm = filing_period_map or {}
     metrics_used = None
     if retrieval_result.metrics:
         metrics_used = [
@@ -323,7 +360,8 @@ Answer the question using ONLY the context above. Do not add inline citations.""
                 "prior_value": m.prior_value,
                 "change_pct": m.change_pct,
                 "unit": m.unit,
-                "period": m.period,
+                "period": fpm.get(m.filing_id) or m.period,
+                "ticker": ftm.get(m.filing_id),
             }
             for m in retrieval_result.metrics
         ]
@@ -338,6 +376,8 @@ Answer the question using ONLY the context above. Do not add inline citations.""
                 "prior_value": r.prior_value,
                 "change_pct": r.change_pct,
                 "format": r.format,
+                "ticker": ftm.get(r.filing_id) if r.filing_id else None,
+                "period": fpm.get(r.filing_id) if r.filing_id else None,
             }
             for r in retrieval_result.ratios
         ]

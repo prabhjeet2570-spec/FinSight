@@ -4,7 +4,11 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     database_url: str = ""
-    groq_api_key: str = ""
+
+    # LLM provider config (OpenAI-compatible endpoint)
+    llm_api_key: str = ""
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "deepseek/deepseek-chat-v3-0324"
 
     # SEC EDGAR — required by SEC's fair-access policy. Format: "App Name email@domain.com"
     edgar_user_agent: str = "FinSight prabhjeet@nyu.edu"

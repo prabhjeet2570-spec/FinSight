@@ -1,63 +1,104 @@
 :root {
-  --text: #8888a0;
-  --text-h: #eeeef5;
-  --bg: #08080f;
-  --bg-surface: rgba(18, 18, 30, 0.7);
-  --bg-card: rgba(22, 22, 40, 0.5);
-  --border: rgba(255, 255, 255, 0.06);
+  /* ---------- Backgrounds ---------- */
+  --bg:             #06060c;
+  --bg-deep:        #030308;
+  --bg-surface:     #0c0c16;
+  --bg-card:        #11111d;
+  --bg-card-hover:  #17172a;
+  --bg-elev:        #1a1a2e;
+  --bg-inset:       #0a0a14;
 
-  --accent: #f06a56;
-  --accent-hover: #ff8470;
-  --accent-light: rgba(240, 106, 86, 0.1);
-  --accent-glow: 0 0 20px rgba(240, 106, 86, 0.3);
+  /* ---------- Borders ---------- */
+  --border:         rgba(255, 255, 255, 0.06);
+  --border-strong:  rgba(255, 255, 255, 0.11);
+  --border-accent:  rgba(139, 92, 246, 0.38);
 
-  --accent-2: #3dba84;
-  --accent-2-light: rgba(61, 186, 132, 0.1);
-  --accent-2-glow: 0 0 20px rgba(61, 186, 132, 0.25);
+  /* ---------- Text ---------- */
+  --text-dim:       #55556a;
+  --text:           #8e8ea8;
+  --text-bright:    #c8c8dc;
+  --text-white:     #f5f5fa;
 
-  --accent-3: #c49aef;
-  --accent-3-light: rgba(196, 154, 239, 0.1);
-  --accent-3-glow: 0 0 20px rgba(196, 154, 239, 0.25);
+  /* ---------- Accents ---------- */
+  --accent:         #8b5cf6;          /* violet */
+  --accent-hover:   #a78bfa;
+  --accent-soft:    rgba(139, 92, 246, 0.12);
+  --accent-glow:    rgba(139, 92, 246, 0.4);
 
-  --gradient-hero: linear-gradient(135deg, #f06a56 0%, #c49aef 50%, #3dba84 100%);
+  --accent-2:       #22d3ee;          /* cyan */
+  --accent-2-soft:  rgba(34, 211, 238, 0.12);
+  --accent-2-glow:  rgba(34, 211, 238, 0.35);
 
-  --sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  /* ---------- Semantic ---------- */
+  --pos:            #22c55e;
+  --pos-soft:       rgba(34, 197, 94, 0.12);
+  --pos-glow:       rgba(34, 197, 94, 0.35);
 
-  font: 15px/1.5 var(--sans);
-  color-scheme: dark;
-  color: var(--text);
+  --neg:            #ef4444;
+  --neg-soft:       rgba(239, 68, 68, 0.12);
+  --neg-glow:       rgba(239, 68, 68, 0.35);
+
+  --warn:           #f59e0b;
+  --warn-soft:      rgba(245, 158, 11, 0.12);
+
+  /* ---------- Gradients ---------- */
+  --gradient:       linear-gradient(135deg, #8b5cf6 0%, #22d3ee 100%);
+  --gradient-text:  linear-gradient(135deg, #a78bfa 0%, #22d3ee 100%);
+  --gradient-subtle:linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(34, 211, 238, 0.15) 100%);
+  --gradient-hairline: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.45) 50%, transparent 100%);
+
+  /* ---------- Typography ---------- */
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  /* ---------- Radii ---------- */
+  --r-sm:  10px;
+  --r:     14px;
+  --r-lg:  20px;
+  --r-xl:  26px;
+  --r-pill: 999px;
+
+  /* ---------- Shadows ---------- */
+  --shadow-sm:  0 2px 12px rgba(0, 0, 0, 0.35);
+  --shadow:     0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-lg:  0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-accent: 0 10px 40px rgba(139, 92, 246, 0.25);
+
+  font: 15px/1.55 var(--sans);
+  color: var(--text-bright);
   background: var(--bg);
+  color-scheme: dark;
   -webkit-font-smoothing: antialiased;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --text: #6b6b80;
-    --text-h: #1a1523;
-    --bg: #f5f5fa;
-    --bg-surface: rgba(255, 255, 255, 0.92);
-    --bg-card: rgba(255, 255, 255, 0.7);
-    --border: rgba(0, 0, 0, 0.07);
-    --accent: #e2533d;
-    --accent-hover: #cc4432;
-    --accent-light: rgba(226, 83, 61, 0.06);
-    --accent-glow: 0 2px 15px rgba(226, 83, 61, 0.15);
-    --accent-2: #2d9c6f;
-    --accent-2-light: rgba(45, 156, 111, 0.08);
-    --accent-2-glow: 0 2px 15px rgba(45, 156, 111, 0.15);
-    --accent-3: #b07ce8;
-    --accent-3-light: rgba(176, 124, 232, 0.08);
-    --accent-3-glow: 0 2px 15px rgba(176, 124, 232, 0.15);
-    --gradient-hero: linear-gradient(135deg, #e2533d 0%, #b07ce8 50%, #2d9c6f 100%);
-    color-scheme: light;
-  }
+  font-feature-settings: 'ss01' 1, 'cv11' 1;
 }
 
 body {
   margin: 0;
+  min-height: 100svh;
+  background: var(--bg);
 }
 
 * {
   box-sizing: border-box;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-white);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.12);
 }

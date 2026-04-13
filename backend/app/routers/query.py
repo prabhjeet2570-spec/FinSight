@@ -1,7 +1,7 @@
 """Query endpoint — the public entry point for the RAG pipeline.
 
 Phase 10 dispatch:
-  - Classify the question and extract company tickers in one Groq call.
+  - Classify the question and extract company tickers in one LLM call.
   - Resolve tickers to CompanyInfo (cache-first, edgartools fallback).
   - Build a filing plan (one filing per company; cache-checked per accession).
   - If every filing is already cached: run the pipeline synchronously and
@@ -30,6 +30,20 @@ from app.services.query_pipeline import run_query, run_query_job
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["query"])
+
+
+def _rate_limited_response() -> QueryResponse:
+    return QueryResponse(
+        answer=(
+            "The server is currently experiencing high demand. "
+            "Please wait a moment and try again."
+        ),
+        citations=[],
+        query_type="NARRATIVE",
+        confidence="low",
+        companies_resolved=[],
+        filings_used=[],
+    )
 
 
 def _no_company_response(question: str) -> QueryResponse:
@@ -93,6 +107,9 @@ async def query_endpoint(req: QueryRequest, background_tasks: BackgroundTasks):
 
     # 1. Classify + extract companies in one LLM call
     classification = await classify_query(req.question)
+
+    if classification.get("_classifier_failed"):
+        return _rate_limited_response()
 
     company_strings = classification.get("companies") or []
     if not company_strings:

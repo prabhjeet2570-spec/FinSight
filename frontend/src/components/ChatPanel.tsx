@@ -1,16 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import type { ChatMessage } from '../types';
-import { AnswerBubble } from './AnswerBubble';
-import { JobProgress } from './JobProgress';
+import { AnswerBubble, AnswerCard } from './AnswerBubble';
 
-const SUGGESTIONS = [
-  "How is Apple's revenue trending?",
-  "What are NVIDIA's biggest risk factors?",
-  "Compare Microsoft and Google's operating margins",
-  "Is Tesla's management optimistic about next year?",
-  "What did Meta say about AI in their last 10-Q?",
+interface Example {
+  category: 'METRICS' | 'RISK' | 'COMPARE' | 'OUTLOOK' | 'STRATEGY' | 'DEEP';
+  question: string;
+}
+
+const EXAMPLES: Example[] = [
+  { category: 'METRICS',  question: "How is Apple's revenue trending?" },
+  { category: 'RISK',     question: "What are NVIDIA's biggest risk factors?" },
+  { category: 'COMPARE',  question: "Compare Microsoft and Google's operating margins" },
+  { category: 'OUTLOOK',  question: "Is Tesla's management optimistic about next year?" },
+  { category: 'STRATEGY', question: "What did Meta say about AI in their last 10-Q?" },
+  { category: 'DEEP',     question: "Break down Amazon's free cash flow" },
 ];
+
+const CATEGORY_CLASS: Record<Example['category'], string> = {
+  METRICS:  'tag-metrics',
+  RISK:     'tag-risk',
+  COMPARE:  'tag-compare',
+  OUTLOOK:  'tag-outlook',
+  STRATEGY: 'tag-strategy',
+  DEEP:     'tag-deep',
+};
 
 const POLL_INTERVAL_MS = 2500;
 const STORAGE_KEY = 'finsight-chat';
@@ -30,7 +44,9 @@ function saveMessages(messages: ChatMessage[]) {
   try {
     const toSave = messages.filter((m) => !m.pending);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-  } catch { /* storage full or unavailable */ }
+  } catch {
+    /* storage full or unavailable */
+  }
 }
 
 export function ChatPanel() {
@@ -38,12 +54,21 @@ export function ChatPanel() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     saveMessages(messages);
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
+
+  // auto-resize the textarea
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }, [input]);
 
   const updateMessage = useCallback((id: string, updates: Partial<ChatMessage>) => {
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
@@ -132,10 +157,29 @@ export function ChatPanel() {
     [busy, updateMessage],
   );
 
+  const clearSession = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setMessages([]);
+    setInput('');
+    setBusy(false);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    inputRef.current?.focus();
+  }, []);
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void submit(input);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      clearSession();
     }
   };
 
@@ -145,54 +189,84 @@ export function ChatPanel() {
     };
   }, []);
 
+  const hasMessages = messages.length > 0;
+
   return (
     <div className="chat-panel">
       <div className="chat-scroll" ref={scrollRef}>
-        {messages.length === 0 ? (
-          <EmptyState onSelect={(q) => void submit(q)} />
+        {!hasMessages ? (
+          <Landing onSelect={(q) => void submit(q)} />
         ) : (
           messages.map((m) => <MessageRow key={m.id} message={m} />)
         )}
       </div>
 
-      <div className="chat-input-area">
-        <div className="chat-input-row">
+      <div className="prompt-area">
+        <div className="prompt-wrap">
           <textarea
-            className="chat-input"
-            placeholder="Ask about any company's SEC filings\u2026"
+            ref={inputRef}
+            className="prompt-input"
+            placeholder="Ask about any US public company…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
             disabled={busy}
+            autoFocus
           />
           <button
-            className="chat-send"
+            className="prompt-clear"
+            onClick={clearSession}
+            disabled={messages.length === 0 && !input}
+            title="Clear session (⌘L)"
+            aria-label="Clear session"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+          <button
+            className="prompt-send"
             onClick={() => void submit(input)}
             disabled={busy || !input.trim()}
+            aria-label="Ask"
           >
-            {busy ? '\u2026' : 'Ask'}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M13 5l7 7-7 7" />
+            </svg>
           </button>
+        </div>
+        <div className="prompt-hint">
+          <span><kbd>Enter</kbd> to send</span>
+          <span><kbd>Shift</kbd> + <kbd>Enter</kbd> for newline</span>
+          <span><kbd>⌘L</kbd> to clear</span>
         </div>
       </div>
     </div>
   );
 }
 
-function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
+function Landing({ onSelect }: { onSelect: (q: string) => void }) {
   return (
-    <div className="chat-empty">
-      <div className="hero-orb" aria-hidden="true" />
-      <h2 className="hero-title">
-        Explore <span className="gradient-text">SEC Filings</span> with AI
-      </h2>
-      <p className="hero-subtitle">
-        Ask about any US public company — revenue, risks, management outlook, and more
+    <div className="landing">
+      <div className="landing-badge">Grounded in SEC EDGAR filings</div>
+      <h1 className="landing-title">
+        Ask anything about <span className="gradient-text">SEC filings</span>
+      </h1>
+      <p className="landing-sub">
+        Natural-language Q&amp;A over any US public company's 10-K, 10-Q, 8-K, and more.
+        Real data, real citations — no uploads required.
       </p>
-      <div className="suggestion-chips">
-        {SUGGESTIONS.map((q) => (
-          <button key={q} className="suggestion-chip" onClick={() => onSelect(q)}>
-            {q}
+      <div className="examples-heading">Try one of these</div>
+      <div className="examples-grid">
+        {EXAMPLES.map((ex) => (
+          <button
+            key={ex.question}
+            className="example-card"
+            onClick={() => onSelect(ex.question)}
+          >
+            <span className={`example-tag ${CATEGORY_CLASS[ex.category]}`}>{ex.category}</span>
+            <span className="example-text">{ex.question}</span>
           </button>
         ))}
       </div>
@@ -203,47 +277,49 @@ function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
 function MessageRow({ message }: { message: ChatMessage }) {
   if (message.role === 'user') {
     return (
-      <div className="msg msg-user">
-        <div className="msg-bubble">{message.content}</div>
-      </div>
-    );
-  }
-
-  if (message.pending && message.jobId) {
-    return (
-      <div className="msg msg-assistant">
-        <div className="msg-bubble">
-          <JobProgress progress={message.progress} />
-        </div>
+      <div className="msg-wrap msg-user">
+        <div className="msg-user-bubble">{message.content}</div>
       </div>
     );
   }
 
   if (message.pending) {
     return (
-      <div className="msg msg-assistant">
-        <div className="msg-bubble msg-pending">Thinking&hellip;</div>
+      <div className="msg-wrap">
+        <AnswerCard>
+          <div className="panel-pending">
+            <div className="loader-orb" />
+            <div className="pending-text">
+              <div className="pending-title">Fetching records…</div>
+            </div>
+          </div>
+          <div className="job-bar" />
+        </AnswerCard>
       </div>
     );
   }
 
   if (message.error) {
     return (
-      <div className="msg msg-assistant">
-        <div className="msg-bubble msg-error">{message.error}</div>
+      <div className="msg-wrap">
+        <AnswerCard>
+          <div className="panel-error">{message.error}</div>
+        </AnswerCard>
       </div>
     );
   }
 
   return (
-    <div className="msg msg-assistant">
-      <div className="msg-bubble">
-        {message.response ? (
-          <AnswerBubble response={message.response} />
-        ) : (
-          <div className="answer-text">{message.content}</div>
-        )}
-      </div>
+    <div className="msg-wrap">
+      {message.response ? (
+        <AnswerBubble response={message.response} />
+      ) : (
+        <AnswerCard>
+          <div className="answer-body">
+            <div className="answer-text">{message.content}</div>
+          </div>
+        </AnswerCard>
+      )}
     </div>
   );
 }

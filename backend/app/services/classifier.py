@@ -1,11 +1,9 @@
-"""Query classifier using Groq (Llama 3.3 70B).
+"""Query classifier via OpenAI-compatible LLM endpoint.
 
 Takes a user question and classifies it into a query type, extracts
 target metric names, and identifies any financial jargon. This drives
 the retrieval routing — NUMERICAL questions go to structured SQL,
 NARRATIVE questions go to vector search, MIXED uses both.
-
-Uses few-shot prompting with Llama 3.3 70B via Groq's OpenAI-compatible API.
 """
 import asyncio
 import json
@@ -123,7 +121,7 @@ User: "Why did Microsoft's gross margin improve?"
 {"query_type": "MIXED", "companies": ["MSFT"], "metrics": ["gross_profit", "revenue", "cost_of_revenue"], "section_hint": "MD&A", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Asks for margin metric AND explanation from the latest quarter"}
 
 User: "Is Tesla management optimistic about next year?"
-{"query_type": "SENTIMENT", "companies": ["TSLA"], "metrics": [], "section_hint": "MD&A", "filings_needed": [{"form": "10-Q", "count": 1}], "reasoning": "Management outlook is in the latest quarterly MD&A"}
+{"query_type": "SENTIMENT", "companies": ["TSLA"], "metrics": [], "section_hint": "MD&A", "filings_needed": [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 1}], "reasoning": "Management outlook needs the latest 10-K (most comprehensive MD&A) plus latest 10-Q for recent updates"}
 
 User: "How is Apple's revenue trending over the past year?"
 {"query_type": "NUMERICAL", "companies": ["AAPL"], "metrics": ["revenue"], "section_hint": "Financial Statements", "filings_needed": [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 4}], "reasoning": "Past year trend needs the 10-K for Q4/annual data plus recent 10-Qs — there is no Q4 10-Q"}
@@ -189,7 +187,7 @@ User: "Are there any insider trades at Palantir recently?"
 {"query_type": "NARRATIVE", "companies": ["PLTR"], "metrics": [], "section_hint": null, "filings_needed": [{"form": "4", "count": 10}], "reasoning": "Insider buy/sell transactions are reported on Form 4"}
 
 User: "What's Uber's latest guidance and outlook?"
-{"query_type": "SENTIMENT", "companies": ["UBER"], "metrics": [], "section_hint": "MD&A", "filings_needed": [{"form": "10-Q", "count": 1}, {"form": "8-K", "count": 3}], "reasoning": "Guidance is in MD&A of the latest 10-Q, plus recent 8-Ks often contain earnings guidance updates"}
+{"query_type": "SENTIMENT", "companies": ["UBER"], "metrics": [], "section_hint": "MD&A", "filings_needed": [{"form": "10-K", "count": 1}, {"form": "10-Q", "count": 1}, {"form": "8-K", "count": 3}], "reasoning": "Guidance needs the latest 10-K for comprehensive MD&A, latest 10-Q for recent updates, plus recent 8-Ks for earnings guidance"}
 
 User: "How is the economy doing?"
 {"query_type": "NARRATIVE", "companies": [], "metrics": [], "section_hint": null, "filings_needed": [], "reasoning": "No specific public company mentioned — cannot look up SEC filings"}
@@ -204,8 +202,8 @@ Now classify this query:
 def _get_client() -> AsyncOpenAI:
     settings = get_settings()
     return AsyncOpenAI(
-        api_key=settings.groq_api_key,
-        base_url="https://api.groq.com/openai/v1",
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
     )
 
 
@@ -298,7 +296,7 @@ def _apply_jargon_resolution(question: str, classification: dict) -> dict:
 
 
 async def classify_query(question: str) -> dict:
-    """Classify a user question using Llama 3.3 70B (Groq) + jargon resolution.
+    """Classify a user question using the configured LLM + jargon resolution.
 
     Returns dict with keys:
         query_type: NUMERICAL | NARRATIVE | MIXED | SENTIMENT
@@ -312,10 +310,12 @@ async def classify_query(question: str) -> dict:
     prompt = CLASSIFIER_PROMPT + f'User: "{question}"'
 
     classification = None
-    for attempt in range(3):
+    max_retries = 5
+    for attempt in range(max_retries):
         try:
+            settings = get_settings()
             response = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=settings.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
                 temperature=0,
@@ -323,14 +323,15 @@ async def classify_query(question: str) -> dict:
             classification = _parse_classifier_response(response.choices[0].message.content)
             break
         except RateLimitError:
-            if attempt < 2:
-                logger.warning(f"Classifier rate limited (attempt {attempt + 1}), retrying...")
-                await asyncio.sleep(2 * (attempt + 1))
+            if attempt < max_retries - 1:
+                wait = min(5 * (2 ** attempt), 60)
+                logger.warning(f"Classifier rate limited (attempt {attempt + 1}), retrying in {wait}s...")
+                await asyncio.sleep(wait)
                 continue
-            logger.error("Groq classifier rate limited after retries")
+            logger.error("LLM classifier rate limited after retries")
             break
         except Exception as e:
-            logger.error(f"Groq classifier call failed: {e}")
+            logger.error(f"LLM classifier call failed: {e}")
             break
 
     if classification is None:
@@ -341,6 +342,7 @@ async def classify_query(question: str) -> dict:
             "section_hint": None,
             "filings_needed": [{"form": "10-Q", "count": 1}],
             "reasoning": "Classifier unavailable — defaulting to MIXED",
+            "_classifier_failed": True,
         }
 
     # Enrich with jargon resolution

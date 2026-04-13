@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE INDEX IF NOT EXISTS idx_companies_ticker ON companies(ticker);
 CREATE INDEX IF NOT EXISTS idx_companies_name ON companies(lower(name));
 
--- Filings (one row per fetched SEC filing — replaces the old `documents` table)
+-- Filings (one row per fetched SEC filing, cached by accession_number)
 CREATE TABLE IF NOT EXISTS filings (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cik              TEXT NOT NULL REFERENCES companies(cik),

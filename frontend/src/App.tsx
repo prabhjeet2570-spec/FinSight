@@ -36,29 +36,52 @@ function App() {
     };
   }, []);
 
+  const statusLabel =
+    backend === 'ready' ? 'Ready' : backend === 'waking' ? 'Warming up' : 'Offline';
+
   return (
     <div className="app">
       <header className="header">
-        <h1 className="logo">
-          <span className="logo-fin">Fin</span>
-          <span className="logo-sight">Sight</span>
-        </h1>
-        <p className="tagline">Explore SEC filings for any US public company</p>
+        <div className="brand">
+          <div className="brand-mark">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M4 18 L9 11 L13 14 L20 6"
+                stroke="white"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="20" cy="6" r="1.8" fill="white" />
+            </svg>
+          </div>
+          <div className="brand-name">
+            Fin<span className="accent">Sight</span>
+          </div>
+          <div className="brand-tagline">
+            AI-powered insights from SEC filings of US public companies
+          </div>
+        </div>
+
+        <div className={`header-status status-${backend}`}>
+          <span className="status-dot" />
+          <span>{statusLabel}</span>
+        </div>
       </header>
 
       {backend === 'waking' && (
-        <div className="wake-banner">
-          Waking up the server — free tier spins down after 15 min of inactivity...
+        <div className="banner banner-warn">
+          Warming up the server — free tier spins down after 15 min idle…
         </div>
       )}
 
       {backend === 'error' && (
-        <div className="wake-banner wake-error">
-          Could not reach the FinSight backend. Make sure it is running on port 8000.
+        <div className="banner banner-error">
+          Cannot reach the FinSight backend. Make sure it is running on port 8000.
         </div>
       )}
 
-      <main className="main-content">
+      <main>
         <ChatPanel />
       </main>
     </div>

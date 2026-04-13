@@ -38,6 +38,7 @@ export interface MetricUsed {
   change_pct: number | null;
   unit: string | null;
   period: string | null;
+  ticker: string | null;
 }
 
 export interface RatioComputed {
@@ -47,6 +48,8 @@ export interface RatioComputed {
   prior_value: number | null;
   change_pct: number | null;
   format: string;
+  ticker: string | null;
+  period: string | null;
 }
 
 export interface SentimentResult {

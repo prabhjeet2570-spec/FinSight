@@ -3,19 +3,12 @@
 Given the resolved companies and the classifier's `filings_needed` list,
 this module:
 
-  1. For each (company, form_type, count), checks the local DB first for
-     cached filings with status='ready'. If we already have enough, no
-     EDGAR call is made at all.
-
-  2. Only calls EDGAR when the DB doesn't have enough cached filings for
-     the request.
-
+  1. Always checks EDGAR for the latest filings (lightweight metadata call).
+  2. Checks if each accession number is already cached in the local DB.
   3. Returns a `ResolutionPlan` that tells the router whether the query
-     can run synchronously (all hits) or needs background ingestion
-     (any miss).
+     can run synchronously (all cached) or needs background ingestion.
 
-The classifier (LLM) decides which filing types and how many — no
-handcrafted rules here.
+This ensures we always use the most recent filings, not stale cached data.
 """
 import logging
 from dataclasses import dataclass, field
@@ -58,49 +51,7 @@ class ResolutionPlan:
         return [t.cached_filing_id for t in self.targets if t.cached_filing_id]
 
 
-# ---------- DB cache lookup ----------
-
-
-async def _find_cached_filings(
-    ticker: str,
-    form_type: str,
-    count: int,
-) -> list[tuple[UUID, FilingMeta]]:
-    """Check local DB for cached filings matching ticker + form type.
-
-    Returns up to `count` filings, newest first, only those with
-    status='ready'.
-    """
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT id, accession_number, filing_type, filing_date,
-                   period_of_report, primary_doc_url
-            FROM filings
-            WHERE ticker = $1
-              AND filing_type = $2
-              AND status = 'ready'
-            ORDER BY filing_date DESC
-            LIMIT $3
-            """,
-            ticker, form_type, count,
-        )
-
-    results: list[tuple[UUID, FilingMeta]] = []
-    for r in rows:
-        meta = FilingMeta(
-            accession_number=r["accession_number"],
-            form=r["filing_type"],
-            filing_date=str(r["filing_date"]) if r["filing_date"] else "",
-            period_of_report=str(r["period_of_report"]) if r["period_of_report"] else None,
-            primary_doc_url=r["primary_doc_url"],
-        )
-        results.append((r["id"], meta))
-    return results
-
-
-# ---------- EDGAR fallback lookup ----------
+# ---------- EDGAR lookup ----------
 
 
 async def _find_filings_from_edgar(
@@ -166,30 +117,9 @@ async def resolve_filings(
             form_type = req.get("form", "10-Q")
             count = req.get("count", 1)
 
-            # Step 1: Check DB cache first
-            cached = await _find_cached_filings(company.ticker, form_type, count)
-
-            if len(cached) >= count:
-                logger.info(
-                    f"  {company.ticker} {form_type} x{count}: "
-                    f"fully served from DB cache"
-                )
-                for filing_id, meta in cached:
-                    if meta.accession_number in seen_accessions:
-                        continue
-                    seen_accessions.add(meta.accession_number)
-                    plan.targets.append(FilingTarget(
-                        company=company,
-                        meta=meta,
-                        cached_filing_id=filing_id,
-                    ))
-                    company_has_filings = True
-                continue
-
-            # Step 2: Not enough in cache — call EDGAR
+            # Always check EDGAR for the latest filings to avoid stale cache
             logger.info(
-                f"  {company.ticker} {form_type} x{count}: "
-                f"have {len(cached)} cached, calling EDGAR"
+                f"  {company.ticker} {form_type} x{count}: checking EDGAR"
             )
             metas = await _find_filings_from_edgar(company, form_type, count)
 
@@ -198,22 +128,16 @@ async def resolve_filings(
                     continue
                 seen_accessions.add(meta.accession_number)
 
-                # Check if this specific accession is cached
+                # Check if this specific accession is already cached
                 cached_id: UUID | None = None
-                for cid, cmeta in cached:
-                    if cmeta.accession_number == meta.accession_number:
-                        cached_id = cid
-                        break
-
-                if cached_id is None:
-                    pool = await get_pool()
-                    async with pool.acquire() as conn:
-                        row = await conn.fetchrow(
-                            "SELECT id FROM filings WHERE accession_number = $1 AND status = 'ready'",
-                            meta.accession_number,
-                        )
-                    if row:
-                        cached_id = row["id"]
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        "SELECT id FROM filings WHERE accession_number = $1 AND status = 'ready'",
+                        meta.accession_number,
+                    )
+                if row:
+                    cached_id = row["id"]
 
                 plan.targets.append(FilingTarget(
                     company=company,
