@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import './App.css';
 import { ChatPanel } from './components/ChatPanel';
 import { api } from './lib/api';
@@ -84,6 +85,7 @@ function App() {
       <main>
         <ChatPanel />
       </main>
+      <Analytics />
     </div>
   );
 }
