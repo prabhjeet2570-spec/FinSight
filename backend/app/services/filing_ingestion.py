@@ -70,17 +70,17 @@ def _parse_date(value: str | None) -> date | None:
 
 
 def _period_label(form: str, period_of_report: date | None) -> str | None:
-    """Build a human-readable period label like 'Q3 2025' or 'FY 2024'.
+    """Build a human-readable period label like 'Q3 2025' or 'FY 2025 (ended Jan 2026)'.
 
-    Best-effort — for 10-K we use 'FY {year}'; for 10-Q we use the calendar
-    quarter of the period_of_report. The actual fiscal-quarter naming may
-    differ from the calendar quarter (Apple's Q1 ends in December), but the
-    UI label still helps users orient.
+    For 10-K filings, we show the calendar year the fiscal year mostly falls in,
+    plus the actual end date to avoid confusion (e.g., NVIDIA's FY 2026 ends Jan 2026).
+    For 10-Q filings, we use the calendar quarter of the period_of_report date.
     """
     if not period_of_report:
         return None
-    if form.upper().startswith("10-K"):
-        return f"FY {period_of_report.year}"
+    if form.upper().startswith("10-K") or form.upper().startswith("20-F"):
+        month_name = period_of_report.strftime("%b")
+        return f"FY {period_of_report.year} (ended {month_name} {period_of_report.year})"
     if form.upper().startswith("10-Q"):
         q = (period_of_report.month - 1) // 3 + 1
         return f"Q{q} {period_of_report.year}"

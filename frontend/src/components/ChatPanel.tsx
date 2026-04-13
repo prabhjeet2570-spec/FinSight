@@ -14,7 +14,6 @@ const EXAMPLES: Example[] = [
   { category: 'COMPARE',   question: "Compare Microsoft and Google's operating margins" },
   { category: 'EVENTS',    question: "Any recent news or events about Tesla?" },
   { category: 'EXECUTIVE', question: "How much does Tim Cook get paid?" },
-  { category: 'DEEP',      question: "Break down Amazon's free cash flow" },
 ];
 
 const CATEGORY_CLASS: Record<Example['category'], string> = {
@@ -197,7 +196,17 @@ export function ChatPanel() {
         {!hasMessages ? (
           <Landing onSelect={(q) => void submit(q)} />
         ) : (
-          messages.map((m) => <MessageRow key={m.id} message={m} />)
+          <>
+            <div className="chat-toolbar">
+              <button className="new-chat-btn" onClick={clearSession} title="Clear chat (⌘L)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+                Clear chat
+              </button>
+            </div>
+            {messages.map((m) => <MessageRow key={m.id} message={m} />)}
+          </>
         )}
       </div>
 
@@ -215,17 +224,6 @@ export function ChatPanel() {
             autoFocus
           />
           <button
-            className="prompt-clear"
-            onClick={clearSession}
-            disabled={messages.length === 0 && !input}
-            title="Clear session (⌘L)"
-            aria-label="Clear session"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-          <button
             className="prompt-send"
             onClick={() => void submit(input)}
             disabled={busy || !input.trim()}
@@ -239,7 +237,6 @@ export function ChatPanel() {
         <div className="prompt-hint">
           <span><kbd>Enter</kbd> to send</span>
           <span><kbd>Shift</kbd> + <kbd>Enter</kbd> for newline</span>
-          <span><kbd>⌘L</kbd> to clear</span>
         </div>
       </div>
     </div>
@@ -255,7 +252,6 @@ function Landing({ onSelect }: { onSelect: (q: string) => void }) {
       </h1>
       <p className="landing-sub">
         Natural-language Q&amp;A over any US public company's 10-K, 10-Q, 8-K, and more.
-        Real data, real citations — no uploads required.
       </p>
       <div className="examples-heading">Try one of these</div>
       <div className="examples-grid">
@@ -284,13 +280,33 @@ function MessageRow({ message }: { message: ChatMessage }) {
   }
 
   if (message.pending) {
+    const progressText = message.progress;
+    const statusLabel = progressText
+      ? progressText.toLowerCase().includes('generat')
+        ? 'Generating answer…'
+        : progressText.toLowerCase().includes('search')
+        ? 'Searching filings…'
+        : progressText.toLowerCase().includes('sentiment') || progressText.toLowerCase().includes('finbert')
+        ? 'Scoring sentiment…'
+        : progressText.toLowerCase().includes('fetch') || progressText.toLowerCase().includes('edgar')
+        ? 'Fetching records…'
+        : progressText.toLowerCase().includes('resolv')
+        ? 'Resolving filings…'
+        : progressText
+      : message.jobId
+      ? 'Connecting to SEC EDGAR…'
+      : 'Thinking…';
+
     return (
       <div className="msg-wrap">
         <AnswerCard>
           <div className="panel-pending">
             <div className="loader-orb" />
             <div className="pending-text">
-              <div className="pending-title">Fetching records…</div>
+              <div className="pending-title">{statusLabel}</div>
+              {progressText && progressText !== statusLabel && (
+                <div className="pending-detail">{progressText}</div>
+              )}
             </div>
           </div>
           <div className="job-bar" />
