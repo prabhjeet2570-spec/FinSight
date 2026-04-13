@@ -60,12 +60,12 @@ Maps us-gaap XBRL tags to canonical metric names.
 | **Database** | PostgreSQL + pgvector (Neon) | One DB for relational + vector search. Free 512MB |
 | **SEC EDGAR** | `edgartools` + BeautifulSoup + lxml | Wraps EDGAR API; HTML extraction with explicit table/section tags |
 | **XBRL** | `edgartools` built-in | Structured numerical facts by concept tag |
-| **Entity Extraction** | Groq Llama 3.3 70B | Single LLM call extracts query type + target companies |
+| **Entity Extraction** | DeepSeek Chat V3 via OpenRouter | Single LLM call extracts query type + target companies |
 | **Embeddings** | ProsusAI/finbert (768-dim) | Finance-specific; "bearish" matches "declining revenue" |
 | **Sentiment** | ProsusAI/finbert | Trained on 10K+ financial texts |
-| **Generation** | Groq Llama 3.3 70B | Free tier, ~500 tokens/sec, OpenAI-compatible API |
+| **Generation** | DeepSeek Chat V3 via OpenRouter | Free tier, OpenAI-compatible API |
 | **Chunking** | LangChain RecursiveCharacterTextSplitter | Just this one utility |
-| **Deployment** | Vercel + Render + Neon | All free tier, $0 total |
+| **Deployment** | Vercel + HuggingFace Spaces + Neon | All free tier, $0 total |
 
 ---
 
@@ -215,7 +215,7 @@ GET    /api/query/jobs/{job_id}      -- Poll async query status
 GET    /health                       -- Health check
 ```
 
-The 202 pattern exists because first queries trigger EDGAR fetch + ingestion (60-180s), which exceeds Render's 30s HTTP timeout.
+The 202 pattern exists because first queries trigger EDGAR fetch + ingestion (60-180s), which exceeds standard HTTP timeouts.
 
 ---
 
@@ -233,23 +233,23 @@ Single-column chat interface. Dark theme with glass morphism, ambient gradient o
 ## Deployment
 
 ```
-Vercel (Frontend)          Render (Backend)           Neon (Database)
-React + Vite               FastAPI + Python            PostgreSQL + pgvector
-Static files               512MB RAM free tier         512MB storage free tier
-                  <-- HTTPS -->              <-- SQL + pgvector -->
-                                 |
-                                 +--> SEC EDGAR (HTTPS, User-Agent required)
-                                 +--> Groq API (free tier, OpenAI-compatible)
+Vercel (Frontend)          HuggingFace Spaces (Backend)   Neon (Database)
+React + Vite               FastAPI + Python                PostgreSQL + pgvector
+Static files               16GB RAM free tier              512MB storage free tier
+                  <-- HTTPS -->                <-- SQL + pgvector -->
+                                   |
+                                   +--> SEC EDGAR (HTTPS, User-Agent required)
+                                   +--> OpenRouter API (free tier, OpenAI-compatible)
 ```
 
-### RAM Budget (512MB)
+### RAM Budget (16GB on HuggingFace Spaces)
 
-~295MB total: FastAPI (~80MB) + edgartools/httpx (~20MB) + BS4/lxml (~15MB) + FinBERT (~110MB) + working overhead (~70MB).
+~370MB total at baseline: FastAPI (~80MB) + edgartools/httpx (~20MB) + BS4/lxml (~15MB) + FinBERT embedding model (~110MB) + FinBERT sentiment model (~110MB) + working overhead (~35MB). Well within HF Spaces 16GB free tier.
 
 ### Cold Starts
 
-1. **Server**: ~30s after 15min idle. UI shows "waking up the server..."
-2. **First query for new company**: 60-180s for fetch + ingest. UI shows progress steps. Cached companies are instant.
+1. **Server**: ~30s after inactivity. UI shows "Warming up the server..."
+2. **First query for new company**: 60-180s for EDGAR fetch + ingestion. UI shows progress steps. Cached companies respond in seconds.
 
 ---
 
@@ -329,7 +329,7 @@ finsight/
 | 3 | Orchestration | Roll our own (not LangChain/LlamaIndex) | Full control, less abstraction |
 | 4 | Embeddings | FinBERT (not all-MiniLM-L6-v2) | Finance-specific, better retrieval for financial queries |
 | 5 | Sentiment | FinBERT sentiment variant | Trained on 10K+ financial texts |
-| 6 | Generation LLM | Groq Llama 3.3 70B (not Gemini/OpenAI) | Real free tier, OpenAI-compatible API |
+| 6 | Generation LLM | DeepSeek Chat V3 via OpenRouter (not Gemini/OpenAI) | Free tier, OpenAI-compatible API, strong reasoning |
 | 7 | Filing source | SEC EDGAR (not user uploads) | Stronger product story, more system design to demonstrate |
 | 8 | EDGAR client | `edgartools` (not raw HTTP) | Maintained wrapper, handles EDGAR quirks |
 | 9 | Filing format | HTML primary, XBRL for metrics | HTML has explicit tags; XBRL gives clean numbers but no narrative |
@@ -346,12 +346,12 @@ finsight/
 
 ## Current Status
 
-**All core features are implemented and working locally.** Not yet deployed.
+**All core features are implemented and deployed.**
 
 - SEC EDGAR fetch + HTML/XBRL extraction
 - Financial intelligence layer (synonyms, jargon, ratios)
 - FinBERT embeddings + hybrid retrieval
-- Query classification + entity extraction (Groq Llama 3.3 70B)
+- Query classification + entity extraction (DeepSeek Chat V3 via OpenRouter)
 - Filing resolution with cache-first strategy
 - Async query pipeline with job polling
 - Grounded answer generation with citations
@@ -359,7 +359,9 @@ finsight/
 - LRU storage eviction
 - Premium dark UI with glass morphism and animations
 
-**Next:** Deploy to Render/Vercel/Neon, then build the news sentiment + stock prediction layer (see below).
+**Deployed:** Frontend on Vercel (`finsight-xi-ten.vercel.app`), backend on HuggingFace Spaces (`prabhjeet5201-finsight.hf.space`), database on Neon.
+
+**Next:** Build the news sentiment + stock prediction layer (see below).
 
 ---
 
