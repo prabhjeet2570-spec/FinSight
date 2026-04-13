@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Starting FinSight API...")
     await init_db()
+
+    # Warm up FinBERT before accepting requests so the model load
+    # is part of startup baseline, not an additional spike mid-query.
+    import asyncio
+    from app.services.embedding import _load_model
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _load_model)
+    logger.info("FinBERT warm-up complete")
+
     yield
     await close_db()
     logger.info("FinSight API shut down.")

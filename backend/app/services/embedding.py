@@ -37,7 +37,7 @@ def _load_model():
     logger.info("FinBERT model loaded")
 
 
-def embed_texts(texts: Sequence[str], batch_size: int = 32) -> list[list[float]]:
+def embed_texts(texts: Sequence[str], batch_size: int = 8) -> list[list[float]]:
     """Generate embeddings for a list of texts using FinBERT.
 
     Uses mean pooling over token embeddings (with attention mask) to
