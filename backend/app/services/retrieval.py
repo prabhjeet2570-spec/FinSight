@@ -170,8 +170,9 @@ async def search_metrics(
         SELECT m.metric_name, m.value, m.prior_value, m.change_pct, m.unit,
                m.period, m.prior_period, m.page_num, m.table_type, m.filing_id
         FROM metrics m
+        JOIN filings f ON m.filing_id = f.id
         WHERE {where_clause}
-        ORDER BY m.metric_name
+        ORDER BY m.metric_name, f.filing_date ASC
     """
 
     async with pool.acquire() as conn:
@@ -192,6 +193,97 @@ async def search_metrics(
         )
         for row in rows
     ]
+
+
+# ---------- Table search ----------
+
+async def search_tables(
+    query: str,
+    filing_ids: list[UUID] | None = None,
+    max_tables: int = 3,
+) -> list[ChunkResult]:
+    """Search extracted HTML tables by keyword matching.
+
+    Converts matching tables into ChunkResult objects so they flow through
+    the same context-building pipeline as text chunks. Useful for data
+    that lives in tables (e.g., compensation tables in DEF 14A) that
+    vector search over text chunks might miss.
+    """
+    if not filing_ids:
+        return []
+
+    # Extract keywords from the query (simple: words > 3 chars, lowered)
+    stop_words = {
+        "what", "which", "where", "when", "does", "that", "this", "have",
+        "from", "their", "about", "with", "they", "been", "were", "will",
+        "much", "many", "some", "than", "them", "into", "also", "most",
+        "last", "how", "the", "and", "for", "are", "but", "not", "you",
+    }
+    words = [
+        w.strip("?.,!\"'") for w in query.lower().split()
+        if len(w.strip("?.,!\"'")) > 2 and w.strip("?.,!\"'") not in stop_words
+    ]
+    if not words:
+        return []
+
+    pool = await get_pool()
+
+    f_placeholders = ", ".join(f"${i}" for i in range(1, len(filing_ids) + 1))
+    params: list = list(filing_ids)
+
+    # Build keyword match: rows::text matches ANY keyword (case-insensitive)
+    keyword_conditions = []
+    for w in words:
+        idx = len(params) + 1
+        keyword_conditions.append(f"(rows::text ILIKE '%' || ${idx} || '%' OR headers::text ILIKE '%' || ${idx} || '%')")
+        params.append(w)
+
+    keyword_clause = " OR ".join(keyword_conditions)
+
+    sql = f"""
+        SELECT id, filing_id, headers, rows, page_num
+        FROM extracted_tables
+        WHERE filing_id IN ({f_placeholders})
+          AND ({keyword_clause})
+        LIMIT {max_tables}
+    """
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(sql, *params)
+
+    results: list[ChunkResult] = []
+    for row in rows:
+        # Convert table to readable text
+        import json
+        headers = row["headers"] if isinstance(row["headers"], list) else json.loads(row["headers"]) if row["headers"] else []
+        table_rows = row["rows"] if isinstance(row["rows"], list) else json.loads(row["rows"]) if row["rows"] else []
+
+        lines = []
+        if headers:
+            lines.append(" | ".join(str(h) for h in headers))
+            lines.append("-" * 40)
+        for tr in table_rows:
+            if isinstance(tr, list):
+                lines.append(" | ".join(str(cell) for cell in tr))
+
+        if not lines:
+            continue
+
+        text = "[Table]\n" + "\n".join(lines)
+
+        results.append(ChunkResult(
+            chunk_id=row["id"],
+            filing_id=row["filing_id"],
+            text=text,
+            page_num=row["page_num"] or 0,
+            section="Table",
+            similarity=0.5,  # not a vector match, fixed score
+        ))
+
+    if results:
+        logger.info(f"Table search found {len(results)} matching tables")
+
+    return results
 
 
 # ---------- Ratio computation from retrieved metrics ----------
@@ -250,6 +342,16 @@ async def hybrid_retrieve(
         top_k=top_k_chunks,
     )
 
+    # If section filter yielded no results, retry without it
+    if not chunks and section_filter:
+        logger.info(f"No chunks found with section='{section_filter}', retrying without filter")
+        chunks = await search_chunks(
+            query=query,
+            filing_ids=filing_ids,
+            section_filter=None,
+            top_k=top_k_chunks,
+        )
+
     metrics: list[MetricResult] = []
     if metric_names:
         metrics = await search_metrics(
@@ -258,6 +360,13 @@ async def hybrid_retrieve(
         )
 
     ratios = compute_ratios_from_metrics(metrics)
+
+    # Search extracted tables for keywords from the query.
+    # This catches data in HTML tables (e.g., compensation tables in DEF 14A)
+    # that text chunks may reference but don't contain as numbers.
+    table_chunks = await search_tables(query=query, filing_ids=filing_ids)
+    if table_chunks:
+        chunks.extend(table_chunks)
 
     return RetrievalResult(
         chunks=chunks,

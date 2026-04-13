@@ -41,16 +41,24 @@ plainly — don't infer or estimate.
 Write a natural, flowing analysis. Do NOT use rigid section headers or a \
 fixed template. Just answer the question thoroughly using the data.
 
+- Start your answer by stating exactly which filing(s) the data comes from, using \
+the period labels from the "Filings used" section in the context. For example: \
+"Based on the latest available filing — Apple's 10-Q for Q3 2025 — ..." or \
+"Using Microsoft's 10-Q (Q4 2025) and Alphabet's 10-Q (Q3 2025), ...". \
+Use the EXACT period labels from the context — do NOT convert to fiscal quarters.
+- For comparison queries where companies have different filing periods, explicitly \
+flag it: "Note: these filings cover different periods (MSFT Q4 2025 vs GOOGL Q3 2025), \
+so the comparison is not perfectly apples-to-apples."
 - Lead with the direct answer and key numbers.
 - ALWAYS mention the explicit time period (quarter and year) when presenting any number. \
-Never say "in the current period" or "in the latest quarter" — say the actual period \
-like "in Q1 2026" or "for FY 2025". The context includes period information for each metric.
+Never say "in the current period" or "in the latest quarter" — say the actual period. \
+IMPORTANT: Some companies (like Apple) have fiscal years that differ from the calendar \
+year. The "Filings used" section lists the canonical period labels (e.g., "Q4 2025"). \
+Always use THOSE labels in your answer — do NOT use the company's internal fiscal \
+quarter naming (e.g., do NOT say "Q1 FY2026" if the filing is labeled "Q4 2025").
 - Include relevant trends, YoY changes, and comparisons where the data supports it.
 - If the context includes management commentary or forward-looking statements, \
 weave those in naturally (e.g., "Management noted that...").
-- At the start of your answer, briefly mention which filing(s) the data comes from \
-(e.g., "Based on Apple's FY 2025 10-K and Q3 2025 10-Q, ..."). The filings used are \
-listed in the context. Keep it natural — one short phrase, not a formal citation.
 - End with a brief concluding take — is the picture positive, negative, or mixed?
 - For comparison queries, clearly call out which company leads and by how much.
 - Use **bold** for emphasis on key numbers or takeaways, not as section headers.
@@ -64,6 +72,7 @@ def _build_context(
     classification: dict,
     sentiment: AggregatedSentiment | None = None,
     filing_ticker_map: dict | None = None,
+    filing_period_map: dict | None = None,
 ) -> str:
     """Assemble retrieval results into a context block for the LLM.
 
@@ -72,6 +81,7 @@ def _build_context(
     attribute data correctly in comparison queries.
     """
     ftm = filing_ticker_map or {}
+    fpm = filing_period_map or {}
     multi_company = len(set(ftm.values())) >= 2
     sections = []
 
@@ -82,12 +92,17 @@ def _build_context(
         ticker = ftm.get(filing_id, "")
         return f"[{ticker}] " if ticker else ""
 
+    def _period_for(filing_id, fallback_period) -> str | None:
+        """Use filing-level period_label, falling back to raw XBRL period."""
+        return fpm.get(filing_id) or fallback_period
+
     # Metrics
     if result.metrics:
         lines = ["## Extracted Metrics"]
         for m in result.metrics:
             tag = _ticker_tag(m.filing_id)
-            period_tag = f" ({m.period})" if m.period else ""
+            period = _period_for(m.filing_id, m.period)
+            period_tag = f" ({period})" if period else ""
             parts = [f"{tag}**{m.metric_name}**{period_tag}: {m.value}"]
             if m.unit:
                 parts.append(f"({m.unit})")
@@ -149,7 +164,10 @@ def _build_context(
         lines = ["## Relevant Filing Excerpts"]
         for i, chunk in enumerate(result.chunks, 1):
             tag = _ticker_tag(chunk.filing_id)
+            period = _period_for(chunk.filing_id, None)
             header = f"### {tag}Excerpt {i}"
+            if period:
+                header += f" [{period}]"
             if chunk.page_num is not None:
                 header += f" [Page {chunk.page_num}]"
             if chunk.section:
@@ -270,7 +288,7 @@ async def generate_answer(
         dict with keys: answer, citations, query_type, confidence,
         metrics_used, ratios_computed, sentiment
     """
-    context = _build_context(retrieval_result, classification, sentiment, filing_ticker_map)
+    context = _build_context(retrieval_result, classification, sentiment, filing_ticker_map, filing_period_map)
     citations = _build_citations(retrieval_result)
     confidence = _assess_confidence(retrieval_result, classification)
 
@@ -299,7 +317,15 @@ async def generate_answer(
             if label:
                 parts.append(label)
         if parts:
-            filing_source_lines = f"\n\n## Filings used\n{', '.join(parts)}"
+            filing_source_lines = (
+                "\n\n## Filings used — USE THESE period labels in your answer\n"
+                + ", ".join(parts)
+                + "\n\nIMPORTANT: The filing text may use the company's fiscal calendar "
+                "(e.g., Apple calls calendar Q4 2025 as 'fiscal Q1 2026'). "
+                "IGNORE the fiscal naming. Use ONLY the period labels listed above "
+                "(e.g., say 'Q4 2025', NOT 'Q1 2026'). The user sees a table with "
+                "these labels — your text MUST match."
+            )
 
     user_prompt = f"""## Context from SEC filings
 {filing_source_lines}

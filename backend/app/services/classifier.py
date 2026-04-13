@@ -295,6 +295,70 @@ def _apply_jargon_resolution(question: str, classification: dict) -> dict:
     return classification
 
 
+def _enrich_filings_needed(question: str, classification: dict) -> dict:
+    """Rule-based safety net for filing types the LLM might miss.
+
+    Scans the question for keywords that strongly imply a specific filing
+    type and ensures it's present in filings_needed. Does NOT remove
+    anything the LLM already chose — only adds missing types.
+    """
+    q = question.lower()
+    filings = classification.get("filings_needed", [])
+    existing_forms = {f.get("form", "").upper() for f in filings}
+
+    # 8-K: recent events, news, acquisitions, earnings release
+    _8k_keywords = [
+        "recent news", "recent event", "acquisition", "acquir",
+        "merger", "leadership change", "ceo change", "restructur",
+        "earnings release", "guidance update", "material event",
+        "any news", "any event", "what happened", "latest news",
+    ]
+    if any(kw in q for kw in _8k_keywords) and "8-K" not in existing_forms:
+        filings.append({"form": "8-K", "count": 5})
+
+    # DEF 14A: executive compensation, board, proxy, governance
+    _proxy_keywords = [
+        "compensation", "paid", "pay", "salary", "executive comp",
+        "board of director", "proxy", "governance", "shareholder proposal",
+        "how much does", "how much do",
+    ]
+    if any(kw in q for kw in _proxy_keywords) and "DEF 14A" not in existing_forms:
+        filings.append({"form": "DEF 14A", "count": 1})
+
+    # 20-F: known foreign issuers
+    _foreign_tickers = {
+        "BABA", "TSM", "TM", "SAP", "NVO", "ASML", "SHOP", "SE",
+        "SONY", "NIO", "XPEV", "LI", "JD", "PDD", "BIDU",
+    }
+    companies = classification.get("companies", [])
+    if any(t in _foreign_tickers for t in companies):
+        if "20-F" not in existing_forms:
+            # Replace 10-K with 20-F for foreign issuers
+            classification["filings_needed"] = [
+                {"form": "20-F" if f.get("form") == "10-K" else f.get("form"), "count": f.get("count", 1)}
+                for f in filings
+            ]
+            filings = classification["filings_needed"]
+            if "20-F" not in {f.get("form") for f in filings}:
+                filings.append({"form": "20-F", "count": 1})
+
+    # Form 4: insider trading
+    _insider_keywords = [
+        "insider trad", "insider buy", "insider sell", "insider transaction",
+        "form 4", "insider ownership",
+    ]
+    if any(kw in q for kw in _insider_keywords) and "4" not in existing_forms:
+        filings.append({"form": "4", "count": 10})
+
+    # S-1: IPO
+    _ipo_keywords = ["ipo", "s-1", "went public", "go public", "going public"]
+    if any(kw in q for kw in _ipo_keywords) and "S-1" not in existing_forms:
+        filings.append({"form": "S-1", "count": 1})
+
+    classification["filings_needed"] = filings
+    return classification
+
+
 async def classify_query(question: str) -> dict:
     """Classify a user question using the configured LLM + jargon resolution.
 
@@ -347,6 +411,9 @@ async def classify_query(question: str) -> dict:
 
     # Enrich with jargon resolution
     classification = _apply_jargon_resolution(question, classification)
+
+    # Rule-based filing type safety net — catch keywords the LLM might miss
+    classification = _enrich_filings_needed(question, classification)
 
     logger.info(
         f"Classified query: type={classification['query_type']}, "

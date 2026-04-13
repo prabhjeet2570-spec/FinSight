@@ -75,16 +75,21 @@ async def _find_filings_from_edgar(
     if filings:
         return filings
 
-    fallback = "10-K" if form_type == "10-Q" else "10-Q"
-    try:
-        filings = await list_filings(company.ticker, form_type=fallback, limit=count)
-    except EdgarError as e:
-        logger.warning(
-            f"EDGAR list_filings fallback failed for {company.ticker} {fallback}: {e}"
-        )
-        return []
+    # Only fallback between 10-K <-> 10-Q. Other form types (8-K, DEF 14A,
+    # 20-F, S-1, Form 4) are distinct — no sensible fallback exists.
+    if form_type in ("10-Q", "10-K"):
+        fallback = "10-K" if form_type == "10-Q" else "10-Q"
+        try:
+            filings = await list_filings(company.ticker, form_type=fallback, limit=count)
+        except EdgarError as e:
+            logger.warning(
+                f"EDGAR list_filings fallback failed for {company.ticker} {fallback}: {e}"
+            )
+            return []
+        return filings
 
-    return filings
+    logger.warning(f"No {form_type} filings found for {company.ticker}, no fallback available")
+    return []
 
 
 # ---------- Public API ----------

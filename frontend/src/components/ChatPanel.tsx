@@ -4,26 +4,26 @@ import type { ChatMessage } from '../types';
 import { AnswerBubble, AnswerCard } from './AnswerBubble';
 
 interface Example {
-  category: 'METRICS' | 'RISK' | 'COMPARE' | 'OUTLOOK' | 'STRATEGY' | 'DEEP';
+  category: 'METRICS' | 'RISK' | 'COMPARE' | 'EVENTS' | 'EXECUTIVE' | 'DEEP';
   question: string;
 }
 
 const EXAMPLES: Example[] = [
-  { category: 'METRICS',  question: "How is Apple's revenue trending?" },
-  { category: 'RISK',     question: "What are NVIDIA's biggest risk factors?" },
-  { category: 'COMPARE',  question: "Compare Microsoft and Google's operating margins" },
-  { category: 'OUTLOOK',  question: "Is Tesla's management optimistic about next year?" },
-  { category: 'STRATEGY', question: "What did Meta say about AI in their last 10-Q?" },
-  { category: 'DEEP',     question: "Break down Amazon's free cash flow" },
+  { category: 'METRICS',   question: "How is Apple's revenue trending?" },
+  { category: 'RISK',      question: "What are NVIDIA's biggest risk factors?" },
+  { category: 'COMPARE',   question: "Compare Microsoft and Google's operating margins" },
+  { category: 'EVENTS',    question: "Any recent news or events about Tesla?" },
+  { category: 'EXECUTIVE', question: "How much does Tim Cook get paid?" },
+  { category: 'DEEP',      question: "Break down Amazon's free cash flow" },
 ];
 
 const CATEGORY_CLASS: Record<Example['category'], string> = {
-  METRICS:  'tag-metrics',
-  RISK:     'tag-risk',
-  COMPARE:  'tag-compare',
-  OUTLOOK:  'tag-outlook',
-  STRATEGY: 'tag-strategy',
-  DEEP:     'tag-deep',
+  METRICS:   'tag-metrics',
+  RISK:      'tag-risk',
+  COMPARE:   'tag-compare',
+  EVENTS:    'tag-strategy',
+  EXECUTIVE: 'tag-outlook',
+  DEEP:      'tag-deep',
 };
 
 const POLL_INTERVAL_MS = 2500;
