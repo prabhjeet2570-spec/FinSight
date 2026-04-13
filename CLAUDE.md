@@ -77,7 +77,7 @@ Maps us-gaap XBRL tags to canonical metric names.
 User question: "How is Apple's revenue trending?"
        |
        v
-   Query Classifier + Entity Extractor (Groq Llama 3.3 70B, single call)
+   Query Classifier + Entity Extractor (DeepSeek Chat V3 via OpenRouter, single call)
    Returns: {query_type, metrics, section_hint, companies: ["AAPL"], filing_strategy}
        |
        v
@@ -108,7 +108,7 @@ User question: "How is Apple's revenue trending?"
    Context Assembly (## Metrics + ## Ratios + ## Excerpts)
        |
        v
-   Grounded Answer Generation (Groq Llama 3.3 70B)
+   Grounded Answer Generation (DeepSeek Chat V3 via OpenRouter)
    Strict system prompt: answer ONLY from context, cite sources
        |
        v
@@ -150,7 +150,7 @@ EDGAR fetch -> HTML + XBRL bytes
 ### Query Pipeline
 
 ```
-User question -> Classify + extract (single Groq call)
+User question -> Classify + extract (single LLM call)
   -> Financial jargon resolution ("top line" -> revenue)
   -> Filing resolution (cache check + EDGAR fetch if needed)
   -> Route by query type:
@@ -223,10 +223,8 @@ The 202 pattern exists because first queries trigger EDGAR fetch + ingestion (60
 
 Single-column chat interface. Dark theme with glass morphism, ambient gradient orbs, and smooth animations.
 
-- **ChatPanel** — conversation view with suggested-question chips on first load
-- **JobProgress** — inline progress for async queries ("Fetching from EDGAR...", "Extracting...", etc.)
+- **ChatPanel** — conversation view with suggested-question chips on first load, inline job progress
 - **AnswerBubble** — confidence + query_type tags, per-company filing tags, expandable citations
-- **CompanyChip** — filing label renderer (e.g., "AAPL - 10-Q - Q3 2025")
 
 ---
 
@@ -260,7 +258,7 @@ finsight/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                  # FastAPI app, CORS, lifespan
-│   │   ├── config.py                # DATABASE_URL, GROQ_API_KEY, EDGAR_USER_AGENT, FRONTEND_URL
+│   │   ├── config.py                # DATABASE_URL, LLM_API_KEY, LLM_BASE_URL, EDGAR_USER_AGENT, FRONTEND_URL
 │   │   ├── db/
 │   │   │   ├── connection.py        # Async Postgres pool + schema migration
 │   │   │   └── schema.sql           # 5 tables: companies, filings, text_chunks, extracted_tables, metrics
@@ -270,7 +268,7 @@ finsight/
 │   │   │   └── query.py             # POST /api/query, GET /api/query/jobs/{id}
 │   │   ├── services/
 │   │   │   ├── query_pipeline.py    # Orchestrates sync vs async dispatch
-│   │   │   ├── classifier.py        # Groq Llama 3.3 70B: query type + entity extraction
+│   │   │   ├── classifier.py        # DeepSeek Chat V3 via OpenRouter: query type + entity extraction
 │   │   │   ├── entity_resolution.py # Company name -> ticker resolution
 │   │   │   ├── filing_resolver.py   # (companies, query_type) -> filing_ids
 │   │   │   ├── edgar_client.py      # edgartools wrapper: fetch HTML + XBRL
@@ -306,10 +304,8 @@ finsight/
 │   │   ├── lib/api.ts               # Fetch wrapper, sync/async handling
 │   │   ├── types/index.ts           # TypeScript types mirroring backend
 │   │   └── components/
-│   │       ├── ChatPanel.tsx        # Main chat interface + job polling
-│   │       ├── AnswerBubble.tsx     # Response display + citations
-│   │       ├── JobProgress.tsx      # Loading progress for async queries
-│   │       └── CompanyChip.tsx      # Filing label (AAPL - 10-Q - Q3 2025)
+│   │       ├── ChatPanel.tsx        # Main chat interface + job polling + progress
+│   │       └── AnswerBubble.tsx     # Response display + citations
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vite.config.ts
@@ -338,7 +334,7 @@ finsight/
 | 12 | Cache key | `accession_number` (UNIQUE) | EDGAR's globally unique filing ID |
 | 13 | Storage policy | LRU eviction at ~80% of Neon free tier | ~100 companies fit, evict oldest when full |
 | 14 | Query types | 4: NUMERICAL, NARRATIVE, MIXED, SENTIMENT | Covers all question categories |
-| 15 | Processing | One filing at a time | Keeps peak RAM under 512MB |
+| 15 | Processing | One filing at a time | Keeps peak RAM predictable |
 | 16 | Financial intelligence | Hand-built synonyms + jargon + ratios as data | Not LLM-guessed |
 | 17 | Sentiment approach | Within-filing YoY + FinBERT on MD&A | Grounded in filing data, no external market data |
 
@@ -480,7 +476,7 @@ backend/app/
 
 ### Data Fetching Strategy
 
-On-demand, same pattern as EDGAR: user asks a prediction question -> fetch news + prices for that ticker -> cache in DB -> run inference. No background scheduler needed (Render free tier sleeps after 15min anyway). Same async 202 + job polling pattern for first requests.
+On-demand, same pattern as EDGAR: user asks a prediction question -> fetch news + prices for that ticker -> cache in DB -> run inference. No background scheduler needed (HuggingFace Spaces sleeps after inactivity anyway). Same async 202 + job polling pattern for first requests.
 
 ### Build Phases
 

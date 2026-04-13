@@ -20,9 +20,9 @@ Financial intelligence assistant for SEC filings. Ask natural language questions
 | Frontend | React + Vite + TypeScript |
 | Database | PostgreSQL + pgvector (Neon) |
 | Embeddings/Sentiment | FinBERT (ProsusAI/finbert) |
-| Generation | Groq Llama 3.3 70B |
+| Generation | DeepSeek Chat V3 via OpenRouter |
 | SEC Data | edgartools + BeautifulSoup + XBRL |
-| Deployment | Vercel (frontend) + Render (backend) + Neon (DB) |
+| Deployment | Vercel (frontend) + HuggingFace Spaces (backend) + Neon (DB) |
 
 ## Development
 
@@ -50,7 +50,9 @@ npm run dev
 Copy `backend/.env.example` to `backend/.env` and fill in:
 
 - `DATABASE_URL` — Neon PostgreSQL connection string
-- `GROQ_API_KEY` — Groq API key (free tier)
+- `LLM_API_KEY` — OpenRouter API key (free tier)
+- `LLM_BASE_URL` — LLM endpoint (default: `https://openrouter.ai/api/v1`)
+- `LLM_MODEL` — Model name (default: `deepseek/deepseek-chat-v3-0324`)
 - `EDGAR_USER_AGENT` — Your name and email (SEC requires identification)
 - `FRONTEND_URL` — Frontend origin for CORS (default: `http://localhost:5173`)
 

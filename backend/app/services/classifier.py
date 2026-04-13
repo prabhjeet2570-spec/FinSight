@@ -12,7 +12,7 @@ import logging
 from openai import AsyncOpenAI, RateLimitError
 
 from app.config import get_settings
-from app.finance.jargon import resolve_jargon, is_special_concept, get_special_concept
+from app.finance.jargon import is_special_concept, get_special_concept
 
 logger = logging.getLogger(__name__)
 

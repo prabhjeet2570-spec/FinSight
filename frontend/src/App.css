@@ -458,38 +458,6 @@ main {
   margin-bottom: 4px;
 }
 
-.answer-meta {
-  font-size: 12px;
-  color: var(--text);
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.answer-meta .dot { color: var(--text-dim); }
-
-.answer-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border-radius: var(--r-pill);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.pill-numerical { background: var(--accent-soft);   color: var(--accent-hover); }
-.pill-narrative { background: var(--accent-2-soft); color: var(--accent-2); }
-.pill-mixed     { background: var(--warn-soft);     color: var(--warn); }
-.pill-sentiment { background: var(--pos-soft);      color: var(--pos); }
-
-.pill-conf-high   { background: var(--pos-soft); color: var(--pos); }
-.pill-conf-medium { background: var(--warn-soft); color: var(--warn); }
-.pill-conf-low    { background: var(--neg-soft); color: var(--neg); }
-
 .answer-body {
   padding: 20px 24px 22px;
   display: flex;
@@ -919,11 +887,6 @@ main {
   margin-top: 3px;
 }
 
-.pending-sub {
-  font-size: 12px;
-  color: var(--text);
-}
-
 .job-bar {
   height: 3px;
   background: rgba(255, 255, 255, 0.04);
@@ -1018,31 +981,6 @@ main {
 
 .prompt-input:disabled {
   opacity: 0.4;
-}
-
-.prompt-clear {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--r-sm);
-  background: transparent;
-  border: 0;
-  color: var(--text-dim);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.prompt-clear:hover:not(:disabled) {
-  background: var(--neg-soft);
-  color: var(--neg);
-}
-
-.prompt-clear:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
 }
 
 .prompt-send {
