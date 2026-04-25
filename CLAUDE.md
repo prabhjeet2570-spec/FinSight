@@ -221,7 +221,7 @@ The 202 pattern exists because first queries trigger EDGAR fetch + ingestion (60
 
 ## UI
 
-Single-column chat interface. Dark theme with glass morphism, ambient gradient orbs, and smooth animations.
+Single-column chat interface. Clean dark theme with flat design, purposeful color, and typography-driven hierarchy. No gradients, no glassmorphism — professional financial tool aesthetic.
 
 - **ChatPanel** — conversation view with suggested-question chips on first load, inline job progress
 - **AnswerBubble** — confidence + query_type tags, per-company filing tags, expandable citations

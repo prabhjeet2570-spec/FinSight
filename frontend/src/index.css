@@ -1,75 +1,51 @@
 :root {
   /* ---------- Backgrounds ---------- */
-  --bg:             #06060c;
-  --bg-deep:        #030308;
-  --bg-surface:     #0c0c16;
-  --bg-card:        #11111d;
-  --bg-card-hover:  #17172a;
-  --bg-elev:        #1a1a2e;
-  --bg-inset:       #0a0a14;
+  --bg:             #09090b;
+  --bg-surface:     #0f0f12;
+  --bg-card:        #141419;
+  --bg-card-hover:  #1a1a21;
+  --bg-inset:       #0c0c10;
 
   /* ---------- Borders ---------- */
   --border:         rgba(255, 255, 255, 0.06);
-  --border-strong:  rgba(255, 255, 255, 0.11);
-  --border-accent:  rgba(139, 92, 246, 0.38);
+  --border-strong:  rgba(255, 255, 255, 0.10);
 
   /* ---------- Text ---------- */
-  --text-dim:       #55556a;
-  --text:           #8e8ea8;
-  --text-bright:    #c8c8dc;
-  --text-white:     #f5f5fa;
+  --text-dim:       #52525b;
+  --text:           #a1a1aa;
+  --text-bright:    #d4d4d8;
+  --text-white:     #fafafa;
 
-  /* ---------- Accents ---------- */
-  --accent:         #8b5cf6;          /* violet */
-  --accent-hover:   #a78bfa;
-  --accent-soft:    rgba(139, 92, 246, 0.12);
-  --accent-glow:    rgba(139, 92, 246, 0.4);
-
-  --accent-2:       #22d3ee;          /* cyan */
-  --accent-2-soft:  rgba(34, 211, 238, 0.12);
-  --accent-2-glow:  rgba(34, 211, 238, 0.35);
+  /* ---------- Accent ---------- */
+  --accent:         #3b82f6;
+  --accent-hover:   #60a5fa;
+  --accent-soft:    rgba(59, 130, 246, 0.10);
 
   /* ---------- Semantic ---------- */
   --pos:            #22c55e;
-  --pos-soft:       rgba(34, 197, 94, 0.12);
-  --pos-glow:       rgba(34, 197, 94, 0.35);
+  --pos-soft:       rgba(34, 197, 94, 0.10);
 
   --neg:            #ef4444;
-  --neg-soft:       rgba(239, 68, 68, 0.12);
-  --neg-glow:       rgba(239, 68, 68, 0.35);
+  --neg-soft:       rgba(239, 68, 68, 0.10);
 
-  --warn:           #f59e0b;
-  --warn-soft:      rgba(245, 158, 11, 0.12);
-
-  /* ---------- Gradients ---------- */
-  --gradient:       linear-gradient(135deg, #8b5cf6 0%, #22d3ee 100%);
-  --gradient-text:  linear-gradient(135deg, #a78bfa 0%, #22d3ee 100%);
-  --gradient-subtle:linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(34, 211, 238, 0.15) 100%);
-  --gradient-hairline: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.45) 50%, transparent 100%);
+  --warn:           #eab308;
+  --warn-soft:      rgba(234, 179, 8, 0.10);
 
   /* ---------- Typography ---------- */
   --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
 
   /* ---------- Radii ---------- */
-  --r-sm:  10px;
-  --r:     14px;
-  --r-lg:  20px;
-  --r-xl:  26px;
+  --r-sm:  6px;
+  --r:     8px;
+  --r-lg:  12px;
   --r-pill: 999px;
 
-  /* ---------- Shadows ---------- */
-  --shadow-sm:  0 2px 12px rgba(0, 0, 0, 0.35);
-  --shadow:     0 8px 32px rgba(0, 0, 0, 0.45);
-  --shadow-lg:  0 16px 48px rgba(0, 0, 0, 0.55);
-  --shadow-accent: 0 10px 40px rgba(139, 92, 246, 0.25);
-
-  font: 15px/1.55 var(--sans);
+  font: 14px/1.5 var(--sans);
   color: var(--text-bright);
   background: var(--bg);
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: 'ss01' 1, 'cv11' 1;
 }
 
 body {
@@ -89,16 +65,16 @@ body {
 
 /* Scrollbars */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.10);
 }
