@@ -14,7 +14,6 @@ const EXAMPLES: Example[] = [
   { category: 'COMPARE',   question: "Compare Microsoft and Google's operating margins" },
   { category: 'EVENTS',    question: "Any recent news or events about Tesla?" },
   { category: 'DEEP',      question: "What is JPMorgan Chase's outlook on credit risk?" },
-  { category: 'METRICS',   question: "How is Palantir's revenue growth looking?" },
 ];
 
 const CATEGORY_CLASS: Record<Example['category'], string> = {

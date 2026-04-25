@@ -81,9 +81,9 @@ def _rate_limited_response() -> QueryResponse:
 def _no_company_response(question: str) -> QueryResponse:
     return QueryResponse(
         answer=(
-            "I'm FinSight — I specialize in SEC filings for US public companies. "
-            "Ask me about any company's financials, risk factors, earnings, executive pay, recent events, and more. "
-            "For example: \"How is Apple doing?\", \"What are NVIDIA's risk factors?\", or \"How much does Tim Cook get paid?\""
+            "Hi, I'm FinSight! I can help you explore SEC filings for any US public company. "
+            "Try asking about a company's revenue, risk factors, earnings, margins, or recent events. "
+            "For example: \"How is Apple doing?\", \"What are NVIDIA's risk factors?\", or \"Compare Microsoft and Google's margins.\""
         ),
         citations=[],
         query_type="NARRATIVE",
