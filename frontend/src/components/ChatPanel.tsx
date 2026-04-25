@@ -4,7 +4,7 @@ import type { ChatMessage } from '../types';
 import { AnswerBubble, AnswerCard } from './AnswerBubble';
 
 interface Example {
-  category: 'METRICS' | 'RISK' | 'COMPARE' | 'EVENTS' | 'EXECUTIVE' | 'DEEP';
+  category: 'METRICS' | 'RISK' | 'COMPARE' | 'EVENTS' | 'DEEP';
   question: string;
 }
 
@@ -13,7 +13,8 @@ const EXAMPLES: Example[] = [
   { category: 'RISK',      question: "What are NVIDIA's biggest risk factors?" },
   { category: 'COMPARE',   question: "Compare Microsoft and Google's operating margins" },
   { category: 'EVENTS',    question: "Any recent news or events about Tesla?" },
-  { category: 'EXECUTIVE', question: "How much does Tim Cook get paid?" },
+  { category: 'DEEP',      question: "What is JPMorgan Chase's outlook on credit risk?" },
+  { category: 'METRICS',   question: "How is Palantir's revenue growth looking?" },
 ];
 
 const CATEGORY_CLASS: Record<Example['category'], string> = {
@@ -21,7 +22,6 @@ const CATEGORY_CLASS: Record<Example['category'], string> = {
   RISK:      'tag-risk',
   COMPARE:   'tag-compare',
   EVENTS:    'tag-strategy',
-  EXECUTIVE: 'tag-outlook',
   DEEP:      'tag-deep',
 };
 
