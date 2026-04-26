@@ -65,6 +65,7 @@ class QueryRequest(BaseModel):
     retrieval: Literal['hybrid', 'bm25', 'dense'] = 'hybrid'
     answer_mode: Literal['extractive', 'ollama'] = 'extractive'
     top_k: int = Field(default=5, ge=1, le=10)
+    rerank: bool = True
 
     @field_validator('question')
     @classmethod

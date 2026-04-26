@@ -1,29 +1,18 @@
-from pydantic_settings import BaseSettings
-from functools import lru_cache
+"""Local-only configuration; secrets are never required for the default workflow."""
+from dataclasses import dataclass
+from pathlib import Path
+import os
 
+REPO = Path(__file__).resolve().parents[2]
+ROOT = REPO / 'backend'
 
-class Settings(BaseSettings):
-    database_url: str = ""
+@dataclass(frozen=True)
+class Settings:
+    database: Path = Path(os.environ.get('FINSIGHT_DB', str(REPO / '.local/finsight.sqlite3')))
+    model_cache: Path = REPO / '.local/models'
+    embedding_model: str = 'sentence-transformers/all-MiniLM-L6-v2'
+    ollama_url: str = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434')
+    ollama_model: str = os.environ.get('OLLAMA_MODEL', 'qwen2.5:3b')
+    allow_ollama: bool = os.environ.get('FINSIGHT_ALLOW_OLLAMA', 'false').lower() == 'true'
 
-    # LLM provider config (OpenAI-compatible endpoint)
-    llm_api_key: str = ""
-    llm_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "deepseek/deepseek-chat-v3-0324"
-
-    # SEC EDGAR — required by SEC's fair-access policy. Format: "App Name email@domain.com"
-    edgar_user_agent: str = ""
-
-    # CORS — comma-separated origins for production
-    frontend_url: str = "http://localhost:5173"
-
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
-
-    @property
-    def cors_origins(self) -> list[str]:
-        """Parse FRONTEND_URL into a list of origins (supports comma-separated)."""
-        return [o.strip() for o in self.frontend_url.split(",") if o.strip()]
-
-
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
+settings = Settings()
