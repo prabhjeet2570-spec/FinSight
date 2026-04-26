@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "description": "Immutable public annual filings. Complete HTML is retained; no synthetic financial facts.",
+  "filings": [
+    {
+      "id": "aapl-2024",
+      "ticker": "AAPL",
+      "company": "Apple Inc.",
+      "cik": "0000320193",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "period_end": "2024-09-28",
+      "accession": "0000320193-24-000123",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "path": "filings/aapl-2024.html",
+      "sha256": "81c983accb73e47cc327494190378c2c5bfa05484c26aadadbbc2842d0df671c"
+    },
+    {
+      "id": "msft-2024",
+      "ticker": "MSFT",
+      "company": "Microsoft Corporation",
+      "cik": "0000789019",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "period_end": "2024-06-30",
+      "accession": "0000950170-24-087843",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024087843/msft-20240630.htm",
+      "path": "filings/msft-2024.html",
+      "sha256": "70313da7f9b43d8e5f86572a8cf6ccd2f478a402786c3ec89842dfc537d05ee2"
+    },
+    {
+      "id": "nvda-2024",
+      "ticker": "NVDA",
+      "company": "NVIDIA Corporation",
+      "cik": "0001045810",
+      "form": "10-K",
+      "fiscal_year": 2024,
+      "period_end": "2024-01-28",
+      "accession": "0001045810-24-000029",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581024000029/nvda-20240128.htm",
+      "path": "filings/nvda-2024.html",
+      "sha256": "b142e4889ba78ffb7cf01825e8434819965321bf63a3bf1d894d7e26f22a09df"
+    }
+  ]
+}

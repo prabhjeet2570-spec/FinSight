@@ -33,3 +33,8 @@ frontend/dist/
 
 CLAUDE.md
 .claude/
+
+# Local corpus indexes, model downloads and import staging
+.local/
+.pytest_cache/
+.ruff_cache/
