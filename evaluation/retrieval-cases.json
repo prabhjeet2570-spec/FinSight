@@ -1,0 +1,272 @@
+{
+  "labeling": "Author-curated evidence anchors from original filing passages, frozen before the baseline run. Anchors are not exhaustive relevance judgments. No external reviewer validation.",
+  "cases": [
+    {
+      "id": "r01",
+      "ticker": "AAPL",
+      "filing_id": "aapl-2024",
+      "split": "development",
+      "question": "Where are final assembly outsourcing partners primarily located?",
+      "evidence_quote": "outsourcing partners primarily located in Asia",
+      "relevant_ids": [
+        "010fd0e1aa6f775f89f85b69"
+      ]
+    },
+    {
+      "id": "r02",
+      "ticker": "AAPL",
+      "filing_id": "aapl-2024",
+      "split": "development",
+      "question": "How can manufacturing equipment investments and supplier prepayments become impaired?",
+      "evidence_quote": "has made prepayments to certain of its suppliers",
+      "relevant_ids": [
+        "9e712e01b2c990e6d8f4b037"
+      ]
+    },
+    {
+      "id": "r03",
+      "ticker": "AAPL",
+      "filing_id": "aapl-2024",
+      "split": "development",
+      "question": "How can information technology failures disrupt the global supply chain?",
+      "evidence_quote": "global supply chain are dependent on complex information technology systems",
+      "relevant_ids": [
+        "fc0fb7c6e83d57576ee5d687"
+      ]
+    },
+    {
+      "id": "r04",
+      "ticker": "AAPL",
+      "filing_id": "aapl-2024",
+      "split": "development",
+      "question": "How does aggressive price competition pressure gross margins?",
+      "evidence_quote": "aggressive price competition and resulting downward pressure on gross margins",
+      "relevant_ids": [
+        "030eeeff603bbfdb98e11cf0",
+        "d79e70025bd66eeca2155c11"
+      ]
+    },
+    {
+      "id": "r05",
+      "ticker": "AAPL",
+      "filing_id": "aapl-2024",
+      "split": "development",
+      "question": "Which global laws cover privacy, data localization and antitrust?",
+      "evidence_quote": "antitrust; privacy, data security and data localization",
+      "relevant_ids": [
+        "022ba5c9b32d5f701fc57e13"
+      ]
+    },
+    {
+      "id": "r06",
+      "ticker": "AAPL",
+      "filing_id": "aapl-2024",
+      "split": "development",
+      "question": "How do inflation, interest rates and currency fluctuations affect consumer spending?",
+      "evidence_quote": "higher interest rates, and currency fluctuations",
+      "relevant_ids": [
+        "21846a96e9b47fdd6d92118b"
+      ]
+    },
+    {
+      "id": "r07",
+      "ticker": "AAPL",
+      "filing_id": "aapl-2024",
+      "split": "development",
+      "question": "Which smartphone models are in the iPhone line?",
+      "evidence_quote": "iPhone line includes iPhone 16 Pro",
+      "relevant_ids": [
+        "a1ceedd4bb480e1609b402b5"
+      ]
+    },
+    {
+      "id": "r08",
+      "ticker": "AAPL",
+      "filing_id": "aapl-2024",
+      "split": "development",
+      "question": "What changes did the Digital Markets Act require for app distribution and payments?",
+      "evidence_quote": "as it seeks to comply with the Digital Markets Act",
+      "relevant_ids": [
+        "12862c654f5b1d236b4ee68f"
+      ]
+    },
+    {
+      "id": "r09",
+      "ticker": "MSFT",
+      "filing_id": "msft-2024",
+      "split": "development",
+      "question": "What is the long-term OpenAI partnership and Azure relationship?",
+      "evidence_quote": "As OpenAI\u2019s exclusive cloud provider",
+      "relevant_ids": [
+        "60d8b0804b38ece058aadb7f"
+      ]
+    },
+    {
+      "id": "r10",
+      "ticker": "MSFT",
+      "filing_id": "msft-2024",
+      "split": "development",
+      "question": "What does LinkedIn do for professionals and businesses?",
+      "evidence_quote": "transform the way professionals grow their network and find jobs",
+      "relevant_ids": [
+        "01bb9d34114310191c282b5b"
+      ]
+    },
+    {
+      "id": "r11",
+      "ticker": "MSFT",
+      "filing_id": "msft-2024",
+      "split": "development",
+      "question": "What platform does GitHub provide to developers?",
+      "evidence_quote": "GitHub provides a collaboration platform and code hosting service",
+      "relevant_ids": [
+        "1e231d7fe8e441d9219a66f0"
+      ]
+    },
+    {
+      "id": "r12",
+      "ticker": "MSFT",
+      "filing_id": "msft-2024",
+      "split": "development",
+      "question": "What cloud services does Azure offer, including computing, storage and AI?",
+      "evidence_quote": "Azure is a comprehensive set of cloud services",
+      "relevant_ids": [
+        "306202fd60af526273aa2106"
+      ]
+    },
+    {
+      "id": "r13",
+      "ticker": "MSFT",
+      "filing_id": "msft-2024",
+      "split": "development",
+      "question": "How does cloud computing and AI infrastructure meet growing service demand?",
+      "evidence_quote": "network of cloud computing and AI infrastructure and datacenters",
+      "relevant_ids": [
+        "161bf9599b1f235c0e45daef"
+      ]
+    },
+    {
+      "id": "r14",
+      "ticker": "MSFT",
+      "filing_id": "msft-2024",
+      "split": "development",
+      "question": "Can cyberattacks affect customers without compromising production services?",
+      "evidence_quote": "Cyberattacks may adversely impact our customers even if our production services",
+      "relevant_ids": [
+        "49fafd94b6af9dc6c1525046"
+      ]
+    },
+    {
+      "id": "r15",
+      "ticker": "MSFT",
+      "filing_id": "msft-2024",
+      "split": "development",
+      "question": "How can differences in customer technical sophistication affect security defaults?",
+      "evidence_quote": "when defining default settings for our products and services",
+      "relevant_ids": [
+        "0be123647c5a7c58fb62e7b7"
+      ]
+    },
+    {
+      "id": "r16",
+      "ticker": "MSFT",
+      "filing_id": "msft-2024",
+      "split": "development",
+      "question": "How can cooperation and competition with OEM partners create regulatory risk?",
+      "evidence_quote": "cooperate and compete with our OEM partners",
+      "relevant_ids": [
+        "16648e8d0c2d5acbc82d1742"
+      ]
+    },
+    {
+      "id": "r17",
+      "ticker": "NVDA",
+      "filing_id": "nvda-2024",
+      "split": "held_out_issuer",
+      "question": "Which foundries supply semiconductor wafers and who supplies memory?",
+      "evidence_quote": "We purchase memory from Micron Technology",
+      "relevant_ids": [
+        "04da318ff41db224f5b42299"
+      ]
+    },
+    {
+      "id": "r18",
+      "ticker": "NVDA",
+      "filing_id": "nvda-2024",
+      "split": "held_out_issuer",
+      "question": "Where is the manufacturing supply chain concentrated?",
+      "evidence_quote": "Our supply chain is concentrated in the Asia-Pacific region",
+      "relevant_ids": [
+        "04da318ff41db224f5b42299"
+      ]
+    },
+    {
+      "id": "r19",
+      "ticker": "NVDA",
+      "filing_id": "nvda-2024",
+      "split": "held_out_issuer",
+      "question": "Does the company assemble, test and package its own products?",
+      "evidence_quote": "We do not assemble, test, or package our products",
+      "relevant_ids": [
+        "0ba1eebfab1829e4464395a8"
+      ]
+    },
+    {
+      "id": "r20",
+      "ticker": "NVDA",
+      "filing_id": "nvda-2024",
+      "split": "held_out_issuer",
+      "question": "How can shifting export controls hurt demand beyond China?",
+      "evidence_quote": "not only in China, but also in other markets",
+      "relevant_ids": [
+        "02c51228b3dbaaaae8ffc635"
+      ]
+    },
+    {
+      "id": "r21",
+      "ticker": "NVDA",
+      "filing_id": "nvda-2024",
+      "split": "held_out_issuer",
+      "question": "What trade barriers can prevent shipments or require export licenses?",
+      "evidence_quote": "do business without an export license",
+      "relevant_ids": [
+        "59e3e09551afb9d3e5c1ffad"
+      ]
+    },
+    {
+      "id": "r22",
+      "ticker": "NVDA",
+      "filing_id": "nvda-2024",
+      "split": "held_out_issuer",
+      "question": "How can channel inventory and anticipated product transitions reduce demand?",
+      "evidence_quote": "channel partners reducing channel inventory of prior architectures",
+      "relevant_ids": [
+        "005ded6ddb4cd0e0ddea44c4",
+        "801a2b464b07f2623577b4b1"
+      ]
+    },
+    {
+      "id": "r23",
+      "ticker": "NVDA",
+      "filing_id": "nvda-2024",
+      "split": "held_out_issuer",
+      "question": "How did CUDA open GPU parallel processing to new applications?",
+      "evidence_quote": "With our introduction of the CUDA programming model",
+      "relevant_ids": [
+        "010623628e84aa69f05e4106"
+      ]
+    },
+    {
+      "id": "r24",
+      "ticker": "NVDA",
+      "filing_id": "nvda-2024",
+      "split": "held_out_issuer",
+      "question": "What is the company\u2019s accelerated computing infrastructure focus?",
+      "evidence_quote": "NVIDIA pioneered accelerated computing",
+      "relevant_ids": [
+        "0c328b975f9d8929cd7796fd",
+        "a2326c37d8161bf2ce732611"
+      ]
+    }
+  ]
+}

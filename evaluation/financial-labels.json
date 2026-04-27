@@ -1,0 +1,45 @@
+{
+  "scope": "Consolidated annual USD facts from the bundled inline XBRL statements; labels are independent constants, not pipeline outputs.",
+  "fiscal_year": 2024,
+  "companies": {
+    "AAPL": {
+      "revenue": "391035000000",
+      "operating_income": "123216000000",
+      "net_income": "93736000000",
+      "gross_profit": "180683000000",
+      "cost_of_revenue": "210352000000",
+      "assets": "364980000000",
+      "liabilities": "308030000000",
+      "cash": "29943000000",
+      "operating_cash_flow": "118254000000",
+      "research": "31370000000",
+      "prior_revenue": "383285000000"
+    },
+    "MSFT": {
+      "revenue": "245122000000",
+      "operating_income": "109433000000",
+      "net_income": "88136000000",
+      "gross_profit": "171008000000",
+      "cost_of_revenue": "74114000000",
+      "assets": "512163000000",
+      "liabilities": "243686000000",
+      "cash": "18315000000",
+      "operating_cash_flow": "118548000000",
+      "research": "29510000000",
+      "prior_revenue": "211915000000"
+    },
+    "NVDA": {
+      "revenue": "60922000000",
+      "operating_income": "32972000000",
+      "net_income": "29760000000",
+      "gross_profit": "44301000000",
+      "cost_of_revenue": "16621000000",
+      "assets": "65728000000",
+      "liabilities": "22750000000",
+      "cash": "7280000000",
+      "operating_cash_flow": "28090000000",
+      "research": "8675000000",
+      "prior_revenue": "26974000000"
+    }
+  }
+}
