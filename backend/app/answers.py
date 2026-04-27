@@ -204,7 +204,9 @@ class AnswerEngine:
                 "insufficient_evidence",
                 persist,
             )
-        if re.search(r"\b(?:q[1-4]|quarter|quarterly|ytd|year.to.date)\b", q):
+        if re.search(r"\b(?:q[1-4]|quarter|quarterly|ytd|year.to.date)\b", q) and any(
+            numeric_intent(q)
+        ):
             return self._finish(
                 request,
                 start,
@@ -218,7 +220,7 @@ class AnswerEngine:
                 persist,
             )
         if re.search(
-            r"\b(?:predict|prediction|forecast|stock price|buy|sell|next year|next quarter|tomorrow)\b",
+            r"\b(?:predict|prediction|stock price|next year|next quarter|tomorrow)\b|should (?:i|we) (?:buy|sell)|(?:buy|sell) (?:stock|shares)",
             q,
         ):
             return self._finish(
@@ -229,6 +231,21 @@ class AnswerEngine:
                 [],
                 [
                     "Historical filings cannot support this requested prediction or investment recommendation. Ask about disclosed results or risks."
+                ],
+                "insufficient_evidence",
+                persist,
+            )
+        if re.search(
+            r"\b(?:ebitda|earnings per share|eps|free cash flow|dividends|market cap)\b", q
+        ):
+            return self._finish(
+                request,
+                start,
+                [],
+                [],
+                [],
+                [
+                    "The requested financial measure is outside the supported fact and formula registry. No substitute metric is used."
                 ],
                 "insufficient_evidence",
                 persist,
@@ -298,7 +315,7 @@ class AnswerEngine:
                 sentences = [
                     x.strip()
                     for x in re.split(r"(?<=[.!?])\s+(?=[A-Z])", source["text"])
-                    if len(x.strip()) >= 40
+                    if len(x.strip()) >= 40 and re.search(r"[.!?]$", x.strip())
                 ]
                 if not sentences:
                     continue
@@ -344,7 +361,7 @@ class AnswerEngine:
             "answer_mode": "deterministic" if numeric else request.answer_mode,
             "trace": {
                 "retrieval": request.retrieval if not numeric else "structured XBRL",
-                "reranked": request.rerank and not numeric,
+                "reranked": any(s.get("rerank_score") is not None for s in sources),
                 "embedding_model": settings.embedding_model
                 if not numeric and request.retrieval != "bm25"
                 else None,

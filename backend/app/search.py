@@ -64,7 +64,7 @@ def bm25(query, documents):
     average = sum(lengths) / max(1, len(lengths))
     df = Counter(t for c in counts for t in c)
     scores = []
-    for c, length in zip(counts, lengths):
+    for c, length in zip(counts, lengths, strict=True):
         score = 0.0
         for term in query_terms:
             freq = c[term]
@@ -120,7 +120,10 @@ def build_index(store, progress=None):
         with store.connect() as db:
             db.executemany(
                 "UPDATE chunks SET vector=?,model=? WHERE id=?",
-                [(v.tobytes(), settings.embedding_model, r["id"]) for r, v in zip(batch, vectors)],
+                [
+                    (v.tobytes(), settings.embedding_model, r["id"])
+                    for r, v in zip(batch, vectors, strict=True)
+                ],
             )
         if progress:
             progress(min(i + 64, len(rows)), len(rows))
@@ -179,6 +182,7 @@ class Retriever:
                         float,
                         self._reranker.rerank(question, [rows[i]["text"] for i in candidates]),
                     ),
+                    strict=True,
                 )
             )
             order = sorted(candidates, key=lambda i: (-rerank_scores[i], rows[i]["id"]))
