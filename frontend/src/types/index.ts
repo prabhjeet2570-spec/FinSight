@@ -1,98 +1,11 @@
-export type CitationSource = 'text_chunk' | 'metric' | 'ratio';
-
-export interface Citation {
-  source_type: CitationSource;
-  filing_id: string | null;
-  page_num: number | null;
-  section: string | null;
-  metric_name: string | null;
-  detail: string | null;
-}
-
-export type QueryType = 'NUMERICAL' | 'NARRATIVE' | 'MIXED' | 'SENTIMENT';
-export type Confidence = 'high' | 'medium' | 'low';
-
-export interface QueryRequest {
-  question: string;
-}
-
-export interface CompanyResolved {
-  ticker: string;
-  name: string;
-  cik: string;
-}
-
-export interface FilingUsed {
-  filing_id: string;
-  ticker: string;
-  filing_type: string;
-  period_label: string | null;
-  accession_number: string;
-  primary_doc_url: string | null;
-}
-
-export interface MetricUsed {
-  name: string;
-  value: number;
-  prior_value: number | null;
-  change_pct: number | null;
-  unit: string | null;
-  period: string | null;
-  ticker: string | null;
-}
-
-export interface RatioComputed {
-  name: string;
-  display_name: string;
-  value: number;
-  prior_value: number | null;
-  change_pct: number | null;
-  format: string;
-  ticker: string | null;
-  period: string | null;
-}
-
-export interface SentimentResult {
-  overall: 'positive' | 'negative' | 'neutral';
-  positive_score: number;
-  negative_score: number;
-  neutral_score: number;
-  analyzed_chunks: number;
-}
-
-export interface QueryResponse {
-  answer: string;
-  citations: Citation[];
-  query_type: QueryType;
-  confidence: Confidence;
-  companies_resolved: CompanyResolved[];
-  filings_used: FilingUsed[];
-  metrics_used: MetricUsed[] | null;
-  ratios_computed: RatioComputed[] | null;
-  sentiment: SentimentResult | null;
-}
-
-export interface QueryJobAccepted {
-  job_id: string;
-  status: string;
-  progress: string | null;
-}
-
-export interface QueryJobStatus {
-  job_id: string;
-  status: 'pending' | 'processing' | 'ready' | 'failed';
-  progress: string | null;
-  result: QueryResponse | null;
-  error: string | null;
-}
-
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  response?: QueryResponse;
-  error?: string;
-  pending?: boolean;
-  jobId?: string;
-  progress?: string | null;
-}
+export interface Filing { id:string; ticker:string; company:string; cik:string; form:string; fiscal_year:number; period_end:string; accession:string; source_url:string; chunk_count:number; fact_count:number; checksum:string }
+export interface Corpus {filings:Filing[]; sections:string[]; scope:string}
+export interface Health {status:string; filings:number; chunks:number; indexed:number; embedding_model:string; ollama_enabled:boolean}
+export interface Source {id:string; type:'fact'|'passage'; ticker:string; company:string; filing_id:string; form:string; accession:string; section:string; text:string; source_url:string; period_start?:string|null; period_end:string; concept?:string; value?:string; unit?:string; decimals?:string; context_id?:string; bm25_score?:number; dense_score?:number; rrf_score?:number; rerank_score?:number|null; ordinal?:number; kind?:string}
+export interface Claim {text:string; quote?:string; source_ids:string[]; kind:string}
+export interface Calculation {label:string; ticker:string; value:string; display_value:string; formula:string; operands:string[]; fiscal_year:number; period_start:string; period_end:string}
+export interface QueryResponse {id:string; question:string; status:'supported'|'partial'|'insufficient_evidence'; claims:Claim[]; sources:Source[]; calculations:Calculation[]; issues:string[]; answer_mode:string; citation_validation:string; trace:{retrieval:string; reranked:boolean; embedding_model:string|null; candidate_sources:number; cited_sources:number; elapsed_ms:number}}
+export interface QueryRequest {question:string;tickers:string[];fiscal_year:number;section?:string;retrieval:'hybrid'|'bm25'|'dense';answer_mode:'extractive'|'ollama';top_k:number;rerank:boolean}
+export interface Job {id:string;status:string;result:unknown;error:string|null}
+export interface EvalMetrics {recall_at_5:number;mrr_at_5:number;cases:number;latency_median_ms:number;latency_p95_ms:number;hit_count:number;failures:{id:string;question:string;retrieved:string[]}[]}
+export interface Evaluation {corpus:{filings:number;chunks:number;sha256:string};retrieval:Record<string,EvalMetrics>;financial:{passed:number;total:number;failures:unknown[]};abstention:{passed:number;total:number;failures:unknown[]};citation:{passed:number;total:number};scope:string;models:Record<string,string>;cases:unknown[]}

@@ -1,93 +1,39 @@
-import { useEffect, useRef, useState } from 'react';
-import { Analytics } from '@vercel/analytics/react';
-import './App.css';
-import { ChatPanel } from './components/ChatPanel';
-import { api } from './lib/api';
-
-type BackendState = 'waking' | 'ready' | 'error';
-
-function App() {
-  const [backend, setBackend] = useState<BackendState>('waking');
-  const retryRef = useRef(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const boot = async () => {
-      while (!cancelled) {
-        try {
-          await api.health();
-          if (!cancelled) setBackend('ready');
-          return;
-        } catch {
-          retryRef.current += 1;
-          if (retryRef.current > 20) {
-            if (!cancelled) setBackend('error');
-            return;
-          }
-          const delay = Math.min(retryRef.current * 1000, 5000);
-          await new Promise((r) => setTimeout(r, delay));
-        }
-      }
-    };
-
-    void boot();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const statusLabel =
-    backend === 'ready' ? 'Ready' : backend === 'waking' ? 'Warming up' : 'Offline';
-
-  return (
-    <div className="app">
-      <header className="header">
-        <div className="brand">
-          <div className="brand-mark">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M4 18 L9 11 L13 14 L20 6"
-                stroke="white"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle cx="20" cy="6" r="1.8" fill="white" />
-            </svg>
-          </div>
-          <div className="brand-name">
-            Fin<span className="accent">Sight</span>
-          </div>
-          <div className="brand-tagline">
-            AI-powered insights from SEC filings of US public companies
-          </div>
-        </div>
-
-        <div className={`header-status status-${backend}`}>
-          <span className="status-dot" />
-          <span>{statusLabel}</span>
-        </div>
-      </header>
-
-      {backend === 'waking' && (
-        <div className="banner banner-warn">
-          Warming up the server — free tier spins down after 15 min idle…
-        </div>
-      )}
-
-      {backend === 'error' && (
-        <div className="banner banner-error">
-          Cannot reach the FinSight backend. Make sure it is running on port 8000.
-        </div>
-      )}
-
-      <main>
-        <ChatPanel />
-      </main>
-      <Analytics />
-    </div>
-  );
+import {useEffect,useState,useCallback} from 'react'
+import {api} from './lib/api'
+import type {Corpus,Health,QueryResponse,Source,Evaluation,QueryRequest} from './types'
+import {Icon} from './components/Icon'
+import {EvidencePanel} from './components/EvidencePanel'
+import {ImportDialog} from './components/ImportDialog'
+import './App.css'
+const examples=[{tag:'Risk research',title:'Where is Apple’s supply chain exposed?',question:'What supply chain manufacturing disruption risks does Apple disclose?',tickers:['AAPL'],icon:'shield'},{tag:'Financial comparison',title:'Compare operating margins',question:'Compare Apple and Microsoft operating margin and revenue growth',tickers:['AAPL','MSFT'],icon:'chart'},{tag:'Business context',title:'Understand NVIDIA’s dependence',question:'What supply chain manufacturing dependence risks does NVIDIA disclose?',tickers:['NVDA'],icon:'book'},{tag:'Evidence boundaries',title:'Ask beyond the available evidence',question:'Predict Apple stock price next year',tickers:['AAPL'],icon:'search'}]
+function App(){
+ const [page,setPage]=useState<'research'|'library'|'evaluation'>('research'),[corpus,setCorpus]=useState<Corpus|null>(null),[health,setHealth]=useState<Health|null>(null),[history,setHistory]=useState<QueryResponse[]>([])
+ const [tickers,setTickers]=useState<string[]>(['AAPL']),[question,setQuestion]=useState(''),[result,setResult]=useState<QueryResponse|null>(null),[selected,setSelected]=useState<Source|null>(null),[tab,setTab]=useState<'answer'|'calculations'|'retrieval'>('answer')
+ const [loading,setLoading]=useState(false),[error,setError]=useState(''),[showSettings,setShowSettings]=useState(false),[showImport,setShowImport]=useState(false),[evalData,setEvalData]=useState<Evaluation|null>(null),[evalError,setEvalError]=useState('')
+ const [year,setYear]=useState(2024),[section,setSection]=useState(''),[retrieval,setRetrieval]=useState<QueryRequest['retrieval']>('hybrid'),[mode,setMode]=useState<QueryRequest['answer_mode']>('extractive'),[rerank,setRerank]=useState(true)
+ const refresh=useCallback(()=>{Promise.all([api.corpus(),api.health(),api.history()]).then(([c,h,his])=>{setCorpus(c);setHealth(h);setHistory(his)}).catch(e=>setError((e as Error).message))},[])
+ useEffect(()=>{refresh()},[refresh])
+ useEffect(()=>{if(page==='evaluation'){api.evaluation().then(setEvalData).catch(e=>setEvalError((e as Error).message))}},[page])
+ async function ask(q=question,scope=tickers){if(!q.trim()||loading)return;setQuestion(q);setTickers(scope);setLoading(true);setError('');setSelected(null);setTab('answer');setPage('research');try{const answer=await api.query({question:q,tickers:scope,fiscal_year:year,section:section||undefined,retrieval,answer_mode:mode,top_k:5,rerank});setResult(answer);setHistory(old=>[answer,...old].slice(0,30))}catch(e){setError((e as Error).message)}finally{setLoading(false)}}
+ function toggle(t:string){setTickers(old=>old.includes(t)?old.filter(x=>x!==t):[...old,t])}
+ function exportAnswer(){if(!result)return;const blob=new Blob([JSON.stringify(result,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='finsight-evidence-'+result.id.slice(0,8)+'.json';a.click();URL.revokeObjectURL(url)}
+ return <div className="shell"><aside className="sidebar"><button className="brand" onClick={()=>{setPage('research');setResult(null);setQuestion('')}}><span className="brand-symbol"><Icon name="chart" size={23}/></span>FinSight<span className="brand-period">.</span></button><div className="workspace-label">DISCLOSURE WORKSPACE</div><nav aria-label="Main navigation">{([{id:'research',title:'Research',icon:'search'},{id:'library',title:'Filing library',icon:'book'},{id:'evaluation',title:'Evaluation',icon:'chart'}] as const).map(n=><button key={n.id} className={'nav-item '+(page===n.id?'active':'')} onClick={()=>setPage(n.id)}><Icon name={n.icon}/>{n.title}{n.id==='library'&&<span className="nav-count">{corpus?.filings.length??0}</span>}</button>)}</nav><div className="sidebar-divider"/><div className="sidebar-section-title">RESEARCH SCOPE <Icon name="filter" size={13}/></div>{corpus?.filings.filter((f,i,all)=>all.findIndex(x=>x.ticker===f.ticker)===i).map(f=><button key={f.ticker} onClick={()=>toggle(f.ticker)} className={'issuer-button '+(tickers.includes(f.ticker)?'selected':'')}><span className={'issuer-logo '+f.ticker.toLowerCase()}>{f.ticker==='AAPL'?'a':f.ticker==='MSFT'?'m':f.ticker==='NVDA'?'n':f.ticker[0].toLowerCase()}</span><span><strong>{f.company.replace(' Corporation','').replace(' Inc.','')}</strong><small>{f.ticker} · {f.form}</small></span><span className="issuer-check">{tickers.includes(f.ticker)&&<Icon name="check" size={12}/>}</span></button>)}<button className="add-filing" onClick={()=>setShowImport(true)}><Icon name="plus" size={15}/> Add a filing</button><div className="sidebar-divider"/><div className="sidebar-section-title">RECENT QUESTIONS</div><div className="history-list">{history.slice(0,5).map(h=><button key={h.id} onClick={()=>{setResult(h);setQuestion(h.question);setSelected(null);setTab('answer');setPage('research')}}><Icon name="clock" size={13}/><span>{h.question}</span></button>)}{!history.length&&<p className="history-empty">Your research trail starts here.</p>}</div><div className="sidebar-bottom"><div className="local-dot"/><div><strong>Local workspace</strong><small>Public filings. Inspectable evidence.</small></div></div></aside>
+ <div className="workspace"><header className="topbar"><div><span className="topbar-breadcrumb">Workspace</span><Icon name="chevron" size={13}/><strong>{page==='research'?'Disclosure research':page==='library'?'Filing library':'Evaluation'}</strong></div><span className="health-status"><span className={'status-dot '+(health?.status==='ready'?'ready':'')}/>{health?.status==='ready'?'Corpus ready':'Preparing corpus'}</span></header>
+ <main className={'main-content '+(result&&page==='research'?'has-result':'')}>
+ {page==='research'&&<><div className="page-heading"><div className="eyebrow">FROM DISCLOSURE TO UNDERSTANDING</div><h1>{result?'Follow the evidence.':'Every answer begins with evidence.'}</h1><p>Research company filings with sources you can inspect and numbers you can verify.</p></div>
+ {!result&&<div className="corpus-strip"><span className="corpus-icon"><Icon name="book" size={20}/></span><div><strong>A focused library. A clearer answer.</strong><span>{corpus?.filings.length??0} annual filings · {health?.chunks.toLocaleString()??'—'} source passages · Original SEC documents</span></div><button onClick={()=>setPage('library')}>Explore library <Icon name="arrow" size={15}/></button></div>}
+ <form className="question-composer" onSubmit={e=>{e.preventDefault();void ask()}}><div className="composer-input"><Icon name="search" size={22}/><textarea aria-label="Research question" placeholder="Ask about disclosed risks, revenue, margins, or business operations…" value={question} onChange={e=>setQuestion(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void ask()}}} rows={2} maxLength={1500}/><button type="submit" className="ask-button" disabled={loading||!question.trim()||!tickers.length} aria-label="Research question submit">{loading?<span className="spinner"/>:<Icon name="arrow" size={20}/>}</button></div><div className="composer-footer"><div className="scope-pills">{tickers.length?tickers.map(t=><span key={t}>{t}</span>):<span>Select an issuer</span>}<label className="year-select">FY<select aria-label="Fiscal year" value={year} onChange={e=>setYear(Number(e.target.value))}>{[2022,2023,2024,2025,2026].map(y=><option key={y}>{y}</option>)}</select></label></div><button type="button" className={'settings-button '+(showSettings?'selected':'')} onClick={()=>setShowSettings(!showSettings)}><Icon name="settings" size={15}/> Research settings</button></div>{showSettings&&<div className="research-settings"><label>Retrieval<select value={retrieval} onChange={e=>setRetrieval(e.target.value as QueryRequest['retrieval'])}><option value="hybrid">Hybrid search</option><option value="bm25">Keyword baseline (BM25)</option><option value="dense">Semantic baseline</option></select></label><label>Answer mode<select value={mode} onChange={e=>setMode(e.target.value as QueryRequest['answer_mode'])}><option value="extractive">Source extracts</option><option value="ollama" disabled={!health?.ollama_enabled}>Local model synthesis</option></select></label><label>Section<select value={section} onChange={e=>setSection(e.target.value)}><option value="">All sections</option>{corpus?.sections.map(s=><option key={s}>{s}</option>)}</select></label><label className="check-label"><input type="checkbox" checked={rerank} onChange={e=>setRerank(e.target.checked)}/> Rerank evidence</label></div>}</form>
+ {error&&<div role="alert" className="notice error">{error}<button className="text-button" onClick={refresh}>Reconnect</button></div>}
+ {loading&&<div role="status" className="working"><span className="spinner"/><div><strong>Finding the passages that matter</strong><span>Searching the selected filings and checking supporting evidence.</span></div></div>}
+ {!result&&!loading&&<><div className="section-label"><span>START WITH A QUESTION</span><span>Four ways to explore</span></div><div className="example-grid">{examples.map(ex=><button key={ex.title} className="example-card" onClick={()=>void ask(ex.question,ex.tickers)}><span className="example-icon"><Icon name={ex.icon} size={23}/></span><span className="example-tag">{ex.tag}</span><h3>{ex.title}</h3><span className="example-footer">{ex.tickers.join(' + ')}<Icon name="arrow" size={17}/></span></button>)}</div><div className="trust-row"><Icon name="shield" size={17}/><span>Historical disclosures, cited passages, explicit evidence boundaries.</span></div></>}
+ {result&&!loading&&<div className="result-layout"><section className="answer-panel"><div className="answer-top"><span className={'answer-status '+result.status}><Icon name={result.status==='insufficient_evidence'?'search':'check'} size={15}/>{result.status==='supported'?'Evidence found':result.status==='partial'?'Partial evidence':'Insufficient evidence'}</span><button className="icon-button" onClick={exportAnswer} aria-label="Export evidence JSON"><Icon name="download"/></button></div><div className="answer-tabs" role="tablist" aria-label="Result views">{(['answer','calculations','retrieval'] as const).map(t=><button key={t} role="tab" aria-selected={tab===t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t==='answer'?'Answer':t==='calculations'?'Calculations':'Retrieval details'}{t==='calculations'&&result.calculations.length>0&&<span>{result.calculations.length}</span>}</button>)}</div>
+ {tab==='answer'&&<><div className="answer-intro"><div className="eyebrow">{result.answer_mode==='deterministic'?'VERIFIED FINANCIAL FACTS':result.answer_mode==='extractive'?'DIRECT FROM THE FILINGS':'LOCAL MODEL SYNTHESIS'}</div><h2>{result.status==='insufficient_evidence'?'The filings don’t support this answer.':result.calculations.length?'Results with the math attached.':'What the disclosures say.'}</h2></div>{result.calculations.length>0&&<div className="metric-grid">{result.calculations.map(c=><button className="metric-card" key={c.ticker+c.label} onClick={()=>setTab('calculations')}><span>{c.ticker} · {c.label}</span><strong>{c.display_value}</strong><small>FY{c.fiscal_year} <Icon name="arrow" size={12}/></small></button>)}</div>}<div className="claims">{result.claims.map((claim,i)=><div className={'claim '+(claim.kind==='extract'?'quotation':'')} key={i}>{claim.kind==='extract'&&<span className="quote-mark">“</span>}<p>{claim.text}{claim.source_ids.map(id=>{const source=result.sources.find(s=>s.id===id);return source&&<button className="citation" key={id} aria-label={'Inspect source '+(result.sources.indexOf(source)+1)} onClick={()=>setSelected(source)}>{result.sources.indexOf(source)+1}</button>})}</p></div>)}</div>{result.issues.map((issue,i)=><div className="notice" key={i}><Icon name="shield" size={17}/><span>{issue}</span></div>)}<div className="answer-footnote"><Icon name="file" size={14}/><span>{result.citation_validation}</span></div></>}
+ {tab==='calculations'&&<div className="calculations-view"><h2>Inspect the calculation.</h2><p className="subtle">Financial arithmetic uses reported XBRL facts and decimal precision.</p>{result.calculations.map(c=><article className="calculation" key={c.ticker+c.label}><div><span className="company-badge">{c.ticker}</span><strong>{c.label}</strong><b>{c.display_value}</b></div><div className="formula">{c.formula}</div><div className="operand-list">{c.operands.map((id,i)=>{const s=result.sources.find(s=>s.id===id);return s&&<button key={id+i} onClick={()=>setSelected(s)}><span>{s.concept?.split(':')[1]}<small>{s.period_start} → {s.period_end}</small></span><strong>{Number(s.value).toLocaleString('en-US')} <small>{s.unit}</small></strong><Icon name="chevron" size={13}/></button>})}</div></article>)}{!result.calculations.length&&<div className="empty-view"><Icon name="chart" size={30}/><h3>No calculation in this answer</h3><p>Try asking about revenue growth or operating margin.</p></div>}</div>}
+ {tab==='retrieval'&&<div className="retrieval-view"><h2>A visible research trail.</h2><dl className="trace-grid"><div><dt>Retrieval</dt><dd>{result.trace.retrieval}</dd></div><div><dt>Answer mode</dt><dd>{result.answer_mode}</dd></div><div><dt>Evidence passages / facts</dt><dd>{result.trace.candidate_sources}</dd></div><div><dt>Cited sources</dt><dd>{result.trace.cited_sources}</dd></div><div><dt>Reranking</dt><dd>{result.trace.reranked?'Enabled':'Not used'}</dd></div><div><dt>End-to-end latency</dt><dd>{(result.trace.elapsed_ms/1000).toFixed(2)} s</dd></div></dl><p className="subtle small">{result.trace.embedding_model||'Structured financial lookups bypass text retrieval.'}</p><div className="retrieval-table"><div className="retrieval-row header"><span>Source</span><span>BM25</span><span>Cosine</span><span>RRF</span></div>{result.sources.filter(s=>s.type==='passage').map((s,i)=><button className="retrieval-row" key={s.id} onClick={()=>setSelected(s)}><span>{i+1}. {s.ticker} · {s.section}</span><span>{s.bm25_score?.toFixed(2)}</span><span>{s.dense_score?.toFixed(3)}</span><span>{s.rrf_score?.toFixed(4)}</span></button>)}</div><p className="small subtle">Retrieval scores rank passages. They are not calibrated answer-confidence probabilities.</p></div>}
+ </section><EvidencePanel result={result} selected={selected} onSelect={setSelected}/></div>}
+ </>}
+ {page==='library'&&<><div className="page-heading"><div className="eyebrow">YOUR EVIDENCE FOUNDATION</div><h1>A library you can inspect.</h1><p>Complete public filings, preserved source locations, and financial facts with their original context.</p></div><div className="library-summary"><div><span>Filings</span><strong>{corpus?.filings.length??0}</strong></div><div><span>Source passages</span><strong>{health?.chunks.toLocaleString()??'—'}</strong></div><div><span>Structured facts</span><strong>{corpus?.filings.reduce((n,f)=>n+f.fact_count,0).toLocaleString()??'—'}</strong></div><button className="primary" onClick={()=>setShowImport(true)}><Icon name="plus"/> Import a filing</button></div><div className="library-grid">{corpus?.filings.map(f=><article className="filing-card" key={f.id}><div className="filing-card-top"><span className={'issuer-logo large '+f.ticker.toLowerCase()}>{f.ticker[0].toLowerCase()}</span><span className="filing-form">{f.form}</span></div><span className="eyebrow">{f.ticker} · FY{f.fiscal_year}</span><h2>{f.company}</h2><p className="subtle">Reporting period ended {f.period_end}</p><div className="filing-stats"><span><strong>{f.chunk_count.toLocaleString()}</strong> passages</span><span><strong>{f.fact_count.toLocaleString()}</strong> XBRL facts</span></div><dl><dt>Accession</dt><dd>{f.accession}</dd><dt>Integrity</dt><dd className="checksum" title={f.checksum}>SHA-256 {f.checksum.slice(0,12)}…</dd></dl><div className="filing-actions"><button onClick={()=>{setTickers([f.ticker]);setPage('research');setResult(null);setYear(f.fiscal_year)}}>Research filing <Icon name="arrow" size={14}/></button><a href={f.source_url} target="_blank" rel="noreferrer" aria-label={'Open '+f.ticker+' original SEC filing'}><Icon name="link" size={17}/></a></div></article>)}</div><div className="scope-note"><Icon name="shield" size={20}/><div><strong>Scope is part of the answer.</strong><p>Calculations use consolidated annual USD facts. Missing facts, conflicting values, quarterly periods, and unsupported predictions are surfaced explicitly. Issuers can have different fiscal calendars.</p></div></div></>}
+ {page==='evaluation'&&<><div className="page-heading"><div className="eyebrow">MEASURE THE SYSTEM, NOT THE PROMISE</div><h1>Evidence for the evidence.</h1><p>Inspect retrieval baselines, financial correctness, and questions the system should decline.</p></div>{evalData?<><div className="evaluation-banner"><Icon name="chart" size={23}/><p>{evalData.scope}</p></div><div className="evaluation-cards">{[{name:'Financial contract checks',data:evalData.financial},{name:'Unsupported question checks',data:evalData.abstention},{name:'Citation integrity checks',data:evalData.citation}].map(item=><article key={item.name}><span>{item.name}</span><strong>{item.data.passed}<small> / {item.data.total}</small></strong><p>Cases passed in the recorded run</p></article>)}</div><h2 className="evaluation-heading">Retrieval, side by side.</h2><div className="baseline-table"><div className="baseline-row header"><span>Method</span><span>Recall @ 5</span><span>MRR @ 5</span><span>Median</span><span>Cases</span></div>{Object.entries(evalData.retrieval).map(([name,m])=><div key={name} className={'baseline-row '+(name==='hybrid_reranked'?'featured':'')}><span>{name==='bm25'?'Keyword · BM25':name==='dense'?'Semantic · MiniLM':name==='hybrid'?'Hybrid · rank fusion':'Hybrid + cross-encoder'}{name==='hybrid_reranked'&&<small>DEFAULT PIPELINE</small>}</span><strong>{(m.recall_at_5*100).toFixed(1)}%</strong><strong>{m.mrr_at_5.toFixed(3)}</strong><span>{m.latency_median_ms.toFixed(0)} ms</span><span>{m.cases}</span></div>)}</div><div className="eval-notes"><article><h3>What these results measure</h3><p>Retrieval relevance is checked against labeled passages on the bundled filings. Financial tests compare exact facts and formulas. This is a curated portfolio evaluation, not a production reliability estimate.</p></article><article><h3>Failures stay visible</h3><p>{Object.values(evalData.retrieval).reduce((n,m)=>n+m.failures.length,0)} retrieval misses across all methods. Raw results retain every question, source identifier, and score, including failed cases.</p></article></div><details className="failure-details"><summary>Inspect retrieval misses</summary>{Object.entries(evalData.retrieval).map(([name,m])=><div key={name}><strong>{name}</strong>{m.failures.length?m.failures.map(f=><p key={f.id}>{f.question} <small>({f.id})</small></p>):<p className="subtle">No misses in this recorded set.</p>}</div>)}</details></>:<div className="notice">{evalError||'Loading recorded evaluation…'}</div>}</>}
+ </main><footer className="workspace-footer"><span>FinSight · Financial evidence workbench</span><span>Sources before conclusions.</span></footer></div>{showImport&&<ImportDialog close={()=>setShowImport(false)} onDone={refresh}/>}</div>
 }
-
-export default App;
+export default App
