@@ -9,6 +9,8 @@ import numpy as np
 
 from app.config import settings
 
+INDEX_ID = settings.embedding_model + ":token-windows-v1"
+
 STOP = set(
     [
         "a",
@@ -86,6 +88,7 @@ def rrf(rankings, k=60):
 class Encoder:
     def __init__(self):
         self._model = None
+        self._tokenizer = None
         self.lock = threading.Lock()
 
     def model(self):
@@ -97,13 +100,38 @@ class Encoder:
                     model_name=settings.embedding_model,
                     cache_dir=str(settings.model_cache),
                     threads=2,
+                    local_files_only=not settings.download_models,
                 )
+                from pathlib import Path
+
+                from tokenizers import Tokenizer
+
+                self._tokenizer = Tokenizer.from_file(
+                    str(Path(self._model.model._model_dir) / "tokenizer.json")
+                )
+                self._tokenizer.no_truncation()
         return self._model
 
     def embed(self, texts, query=False):
         model = self.model()
         method = model.query_embed if query else model.passage_embed
-        result = np.asarray(list(method(texts, batch_size=32)), dtype=np.float32)
+        expanded, groups = [], []
+        for text in texts:
+            encoding = self._tokenizer.encode(text, add_special_tokens=False)
+            indices = []
+            # Full representation even for numeric tables above the encoder token limit.
+            for start in range(0, len(encoding.ids), 216):
+                stop = min(start + 240, len(encoding.ids))
+                indices.append(len(expanded))
+                expanded.append(text[encoding.offsets[start][0] : encoding.offsets[stop - 1][1]])
+                if stop == len(encoding.ids):
+                    break
+            if not indices:
+                indices = [len(expanded)]
+                expanded.append(text)
+            groups.append(indices)
+        windows = np.asarray(list(method(expanded, batch_size=32)), dtype=np.float32)
+        result = np.asarray([windows[indices].mean(axis=0) for indices in groups], dtype=np.float32)
         return result / np.maximum(np.linalg.norm(result, axis=1, keepdims=True), 1e-9)
 
 
@@ -111,19 +139,14 @@ encoder = Encoder()
 
 
 def build_index(store, progress=None):
-    rows = [
-        r for r in store.chunks() if r["model"] != settings.embedding_model or r["vector"] is None
-    ]
+    rows = [r for r in store.chunks() if r["model"] != INDEX_ID or r["vector"] is None]
     for i in range(0, len(rows), 64):
         batch = rows[i : i + 64]
         vectors = encoder.embed([r["text"] for r in batch])
         with store.connect() as db:
             db.executemany(
                 "UPDATE chunks SET vector=?,model=? WHERE id=?",
-                [
-                    (v.tobytes(), settings.embedding_model, r["id"])
-                    for r, v in zip(batch, vectors, strict=True)
-                ],
+                [(v.tobytes(), INDEX_ID, r["id"]) for r, v in zip(batch, vectors, strict=True)],
             )
         if progress:
             progress(min(i + 64, len(rows)), len(rows))
@@ -149,7 +172,7 @@ class Retriever:
         )[:30]
         dense, dense_ranks = [0.0] * len(rows), []
         if mode != "bm25":
-            if any(r["vector"] is None or r["model"] != settings.embedding_model for r in rows):
+            if any(r["vector"] is None or r["model"] != INDEX_ID for r in rows):
                 raise ValueError(
                     "The local embedding index is incomplete. Run the prepare command or wait for import indexing."
                 )
@@ -173,6 +196,7 @@ class Retriever:
                         model_name="Xenova/ms-marco-MiniLM-L-6-v2",
                         cache_dir=str(settings.model_cache),
                         threads=2,
+                        local_files_only=not settings.download_models,
                     )
             candidates = order[:15]
             rerank_scores = dict(

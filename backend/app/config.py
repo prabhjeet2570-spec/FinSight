@@ -16,6 +16,7 @@ class Settings:
     ollama_url: str = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
     ollama_model: str = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
     allow_ollama: bool = os.environ.get("FINSIGHT_ALLOW_OLLAMA", "false").lower() == "true"
+    download_models: bool = os.environ.get("FINSIGHT_DOWNLOAD_MODELS", "false").lower() == "true"
 
 
 settings = Settings()

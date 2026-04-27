@@ -59,9 +59,13 @@ class Store:
         checksum = hashlib.sha256(content).hexdigest()
         with self.connect() as db:
             old = db.execute(
-                "SELECT checksum,parser_version FROM filings WHERE id=?", (filing.id,)
+                "SELECT checksum,parser_version,metadata FROM filings WHERE id=?", (filing.id,)
             ).fetchone()
             if old:
+                if Filing.model_validate_json(old["metadata"]).model_dump(
+                    exclude={"path"}
+                ) != filing.model_dump(exclude={"path"}):
+                    raise ValueError("Filing ID already exists with different metadata")
                 if old["checksum"] == checksum and old["parser_version"] == PARSER_VERSION:
                     return {"filing_id": filing.id, "cached": True}
                 raise ValueError(
@@ -71,9 +75,13 @@ class Store:
         with self.connect() as db:
             # Recheck under the write lock: concurrent import of identical data is idempotent.
             db.execute("BEGIN IMMEDIATE")
-            old = db.execute("SELECT checksum FROM filings WHERE id=?", (filing.id,)).fetchone()
+            old = db.execute(
+                "SELECT checksum,metadata FROM filings WHERE id=?", (filing.id,)
+            ).fetchone()
             if old:
-                if old["checksum"] != checksum:
+                if old["checksum"] != checksum or Filing.model_validate_json(
+                    old["metadata"]
+                ).model_dump(exclude={"path"}) != filing.model_dump(exclude={"path"}):
                     raise ValueError("Conflicting concurrent import")
                 return {"filing_id": filing.id, "cached": True}
             db.execute(

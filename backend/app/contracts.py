@@ -33,6 +33,15 @@ class Filing(BaseModel):
             raise ValueError("Use a public SEC archive URL")
         return value
 
+    @model_validator(mode="after")
+    def archive_matches_identity(self):
+        from urllib.parse import urlparse
+
+        prefix = f"/Archives/edgar/data/{int(self.cik)}/{self.accession.replace('-', '')}/"
+        if not urlparse(self.source_url).path.startswith(prefix):
+            raise ValueError("SEC source URL must match the filing CIK and accession")
+        return self
+
 
 class Fact(BaseModel):
     id: str

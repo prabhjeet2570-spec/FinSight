@@ -12,6 +12,7 @@ from app.answers import AnswerEngine
 from app.config import REPO, settings
 from app.contracts import Filing, QueryRequest
 from app.import_jobs import ImportWorker
+from app.search import INDEX_ID
 from app.store import Store
 
 
@@ -42,7 +43,7 @@ def health(request: Request):
         total = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
         indexed = db.execute(
             "SELECT COUNT(*) FROM chunks WHERE vector IS NOT NULL AND model=?",
-            (settings.embedding_model,),
+            (INDEX_ID,),
         ).fetchone()[0]
     return {
         "status": "ready" if total and indexed == total else "needs_index",

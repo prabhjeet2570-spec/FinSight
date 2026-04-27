@@ -14,7 +14,7 @@ def test_persistent_import_queue_deduplicates_and_resumes(tmp_path, monkeypatch)
         fiscal_year=2024,
         period_end="2024-12-31",
         accession="0000000001-24-000001",
-        source_url="https://www.sec.gov/Archives/edgar/data/1/test.html",
+        source_url="https://www.sec.gov/Archives/edgar/data/1/000000000124000001/test.html",
     )
     content = b"<html><p>Fixture filing narrative with enough meaningful text to produce a sourced chunk.</p></html>"
     worker = ImportWorker(store)
@@ -48,7 +48,7 @@ def test_failed_import_has_no_partial_filing_and_can_retry(tmp_path, monkeypatch
         fiscal_year=2024,
         period_end="2024-12-31",
         accession="0000000001-24-000001",
-        source_url="https://www.sec.gov/Archives/edgar/data/1/test.html",
+        source_url="https://www.sec.gov/Archives/edgar/data/1/000000000124000001/test.html",
     )
     job = w.submit(f, b"<html></html>")
     w.process_one()

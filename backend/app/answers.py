@@ -8,7 +8,7 @@ from uuid import uuid4
 import httpx
 
 from app.config import settings
-from app.financial import financial_answer
+from app.financial import financial_answer, numeric_intent
 from app.search import Retriever, bm25, tokens
 
 ALIASES = {
@@ -132,7 +132,7 @@ class AnswerEngine:
                 mentioned.append(filing["ticker"])
         tickers = mentioned or request.tickers
         year = request.fiscal_year
-        years = re.findall(r"\b(20\d{2})\b", q)
+        years = re.findall(r"\b((?:19|20)\d{2})\b", q)
         if years:
             if len(set(years)) > 1 and not re.search(r"growth|yoy|year.over.year", q):
                 return self._finish(

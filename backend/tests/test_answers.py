@@ -109,3 +109,24 @@ def test_api_history_sources_and_validation(store):
         )
         assert client.get("/api/imports/missing").status_code == 404
         assert client.get("/api/sources/missing").status_code == 404
+
+
+def test_mixed_unsupported_metric_does_not_silently_substitute(store):
+    result = AnswerEngine(store).answer(
+        QueryRequest(question="Apple revenue and EBITDA", tickers=["AAPL"])
+    )
+    assert result["status"] == "insufficient_evidence"
+    assert not result["claims"]
+
+
+def test_extractive_answers_do_not_quote_truncated_sentences(store):
+    r = AnswerEngine(store).answer(
+        QueryRequest(
+            question="Apple supply chain manufacturing disruptions",
+            tickers=["AAPL"],
+            retrieval="bm25",
+            rerank=False,
+        )
+    )
+    assert r["claims"]
+    assert all(c["text"].endswith((".", "!", "?")) for c in r["claims"])

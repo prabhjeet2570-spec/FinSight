@@ -18,7 +18,7 @@ def filing():
         fiscal_year=2024,
         period_end="2024-12-31",
         accession="0000000001-24-000001",
-        source_url="https://www.sec.gov/Archives/edgar/data/1/test.html",
+        source_url="https://www.sec.gov/Archives/edgar/data/1/000000000124000001/test.html",
     )
 
 
@@ -55,3 +55,12 @@ def test_concurrent_import(tmp_path, html, filing):
 def test_unsupported_transformation_is_not_guessed(html, filing):
     _, facts = parse_filing(html.replace("num-dot-decimal", "num-comma-decimal"), filing)
     assert not facts
+
+
+def test_filing_identity_cannot_be_relabelled(tmp_path, html, filing):
+    s = Store(tmp_path / "state.db")
+    s.ingest(filing, html.encode())
+    with pytest.raises(ValueError, match="metadata"):
+        s.ingest(filing.model_copy(update={"ticker": "OTHER"}), html.encode())
+    with pytest.raises(ValueError, match="CIK and accession"):
+        Filing(**(filing.model_dump() | {"cik": "0000000002"}))
