@@ -161,6 +161,10 @@ def numeric_intent(question):
     ):
         ratios.append("revenue_growth")
     metrics = [m for m, pattern in ALIASES.items() if re.search(pattern, q)]
+    if "cost_of_revenue" in metrics and "revenue" in metrics:
+        remaining = re.sub(r"\bcost of (?:revenue|sales)\b", "", q)
+        if not re.search(ALIASES["revenue"], remaining):
+            metrics.remove("revenue")
     if "operating_cash_flow" in metrics and "cash" in metrics:
         metrics.remove("cash")
     # Risk/strategy questions mentioning revenue still need narrative evidence.

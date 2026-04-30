@@ -58,3 +58,11 @@ def test_growth_duration_and_adjacency():
 def test_narrative_risks_do_not_turn_into_numeric_lookup():
     assert numeric_intent("What risks could affect Apple revenue?") == ([], [])
     assert numeric_intent("Compare operating margin")[1] == ["operating_margin"]
+
+
+def test_cost_of_revenue_does_not_also_request_revenue():
+    assert numeric_intent("Apple cost of revenue")[0] == ["cost_of_revenue"]
+    assert set(numeric_intent("Apple revenue and cost of revenue")[0]) == {
+        "revenue",
+        "cost_of_revenue",
+    }
