@@ -64,3 +64,11 @@ def test_filing_identity_cannot_be_relabelled(tmp_path, html, filing):
         s.ingest(filing.model_copy(update={"ticker": "OTHER"}), html.encode())
     with pytest.raises(ValueError, match="CIK and accession"):
         Filing(**(filing.model_dump() | {"cik": "0000000002"}))
+
+
+def test_reimport_same_accession_under_another_id_does_not_duplicate(tmp_path, html, filing):
+    s = Store(tmp_path / "state.db")
+    s.ingest(filing, html.encode())
+    result = s.ingest(filing.model_copy(update={"id": "another-name"}), html.encode())
+    assert result == {"filing_id": filing.id, "cached": True}
+    assert len(s.list_filings()) == 1

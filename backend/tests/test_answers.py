@@ -130,3 +130,32 @@ def test_extractive_answers_do_not_quote_truncated_sentences(store):
     )
     assert r["claims"]
     assert all(c["text"].endswith((".", "!", "?")) for c in r["claims"])
+
+
+def test_local_model_adapter_validates_real_http_contract(monkeypatch):
+    from dataclasses import replace
+
+    import httpx
+    from app import answers
+
+    monkeypatch.setattr(answers, "settings", replace(answers.settings, allow_ollama=True))
+    source = {
+        "id": "s",
+        "text": "Revenue increased as demand for cloud services expanded across the company.",
+    }
+
+    def post(url, **kwargs):
+        assert url == "http://127.0.0.1:11434/api/chat"
+        assert kwargs["json"]["stream"] is False
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "message": {
+                    "content": '{"claims":[{"text":"Cloud services demand expanded.","quote":"Revenue increased as demand for cloud services expanded across the company.","source_id":"s"}]}'
+                }
+            },
+        )
+
+    monkeypatch.setattr(httpx, "post", post)
+    assert answers.synthesize("Explain cloud demand", [source])[0]["source_ids"] == ["s"]

@@ -14,6 +14,7 @@ PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS filings(id TEXT PRIMARY KEY, metadata TEXT NOT NULL, checksum TEXT NOT NULL,
  parser_version TEXT NOT NULL, chunk_count INTEGER NOT NULL, fact_count INTEGER NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS filings_accession ON filings(json_extract(metadata,'$.accession'));
 CREATE TABLE IF NOT EXISTS chunks(id TEXT PRIMARY KEY, filing_id TEXT NOT NULL REFERENCES filings(id) ON DELETE CASCADE,
  payload TEXT NOT NULL, vector BLOB, model TEXT);
 CREATE INDEX IF NOT EXISTS chunks_filing ON chunks(filing_id);
@@ -59,15 +60,16 @@ class Store:
         checksum = hashlib.sha256(content).hexdigest()
         with self.connect() as db:
             old = db.execute(
-                "SELECT checksum,parser_version,metadata FROM filings WHERE id=?", (filing.id,)
+                "SELECT id,checksum,parser_version,metadata FROM filings WHERE id=? OR json_extract(metadata,'$.accession')=?",
+                (filing.id, filing.accession),
             ).fetchone()
             if old:
                 if Filing.model_validate_json(old["metadata"]).model_dump(
-                    exclude={"path"}
-                ) != filing.model_dump(exclude={"path"}):
+                    exclude={"path", "id"}
+                ) != filing.model_dump(exclude={"path", "id"}):
                     raise ValueError("Filing ID already exists with different metadata")
                 if old["checksum"] == checksum and old["parser_version"] == PARSER_VERSION:
-                    return {"filing_id": filing.id, "cached": True}
+                    return {"filing_id": old["id"], "cached": True}
                 raise ValueError(
                     "Filing ID already exists with different content; use a new immutable ID"
                 )
@@ -76,14 +78,15 @@ class Store:
             # Recheck under the write lock: concurrent import of identical data is idempotent.
             db.execute("BEGIN IMMEDIATE")
             old = db.execute(
-                "SELECT checksum,metadata FROM filings WHERE id=?", (filing.id,)
+                "SELECT id,checksum,metadata FROM filings WHERE id=? OR json_extract(metadata,'$.accession')=?",
+                (filing.id, filing.accession),
             ).fetchone()
             if old:
                 if old["checksum"] != checksum or Filing.model_validate_json(
                     old["metadata"]
-                ).model_dump(exclude={"path"}) != filing.model_dump(exclude={"path"}):
+                ).model_dump(exclude={"path", "id"}) != filing.model_dump(exclude={"path", "id"}):
                     raise ValueError("Conflicting concurrent import")
-                return {"filing_id": filing.id, "cached": True}
+                return {"filing_id": old["id"], "cached": True}
             db.execute(
                 "INSERT INTO filings VALUES(?,?,?,?,?,?)",
                 (

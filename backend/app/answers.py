@@ -353,6 +353,7 @@ class AnswerEngine:
         response = {
             "id": uuid4().hex,
             "question": request.question,
+            "request": request.model_dump(mode="json"),
             "status": status,
             "claims": claims,
             "sources": sources,
