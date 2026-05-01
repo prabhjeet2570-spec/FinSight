@@ -90,3 +90,14 @@ test('real filing reimport is durable and does not duplicate its accession',asyn
  await page.getByRole('button',{name:'Back to library'}).click()
  await expect(page.locator('.filing-card')).toHaveCount(3)
 })
+
+test('failed requests never display a previous answer as the new result',async({page})=>{
+ await page.goto('/')
+ await page.getByRole('button',{name:/Compare operating margins/}).click()
+ await expect(page.getByText('31.51%',{exact:true})).toBeVisible()
+ await page.route('**/api/query',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'The local index is unavailable.'})}))
+ await page.getByLabel('Research question',{exact:true}).fill('Apple revenue')
+ await page.getByRole('button',{name:'Research question submit'}).click()
+ await expect(page.getByRole('alert')).toContainText('The local index is unavailable.')
+ await expect(page.locator('.claims')).toHaveCount(0)
+})
