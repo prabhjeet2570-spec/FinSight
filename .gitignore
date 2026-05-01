@@ -38,3 +38,7 @@ CLAUDE.md
 .local/
 .pytest_cache/
 .ruff_cache/
+frontend/test-results/
+frontend/playwright-report/
+# ONNX Runtime's optional local telemetry marker
+:memory:.ses
