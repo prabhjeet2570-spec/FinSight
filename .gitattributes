@@ -1,0 +1,2 @@
+# SEC source filings are corpus data rather than application code.
+data/filings/*.html linguist-vendored=true
