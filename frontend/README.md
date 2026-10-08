@@ -1,6 +1,6 @@
 # FinSight workbench UI
 
-A responsive, fully light research interface built with React and TypeScript. It includes issuer scope, filing library, source inspection, financial derivations, persisted history, JSON exports, import status, and recorded evaluation results.
+A responsive research desk with navy navigation and a light document canvas built with React and TypeScript. It includes issuer scope, filing library, source inspection, financial derivations, persisted history, JSON exports, import status, and recorded evaluation results.
 
 From this directory:
 

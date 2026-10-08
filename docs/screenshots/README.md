@@ -1,10 +1,10 @@
 # Screenshot gallery
 
-These images come from the running local application with complete public SEC filing snapshots. The screenshots use real retrieval and deterministic financial calculations. The design is light throughout.
+These images come from the running local application with complete public SEC filing snapshots. The screenshots use real retrieval and deterministic financial calculations. The design pairs navy navigation with a light document canvas, ruled comparison rows, and an evidence inspector.
 
 | Image | Demonstrated behavior |
 |---|---|
-| `research-overview.png` | Light research workspace and runnable examples |
+| `research-overview.png` | Research desk, issuer selection, and suggested questions |
 | `apple-risk-research.png` | Cited supply-chain risk extracts |
 | `source-inspector.png` | Complete passage and original filing metadata |
 | `retrieval-details.png` | Ranking signals and execution trail |

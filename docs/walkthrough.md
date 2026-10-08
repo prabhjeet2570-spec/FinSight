@@ -46,6 +46,6 @@ The download button on a result exports its complete evidence bundle as JSON. Re
 
 ## Mobile
 
-The light interface adapts to a narrow viewport. The issuer selector is available inside the question composer, and evidence stacks below the answer.
+The research desk adapts to a narrow viewport. The issuer selector is available inside the question composer, and evidence stacks below the answer.
 
 ![Mobile comparison](screenshots/mobile-comparison.png)

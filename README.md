@@ -4,7 +4,9 @@
 
 FinSight is a local workbench for researching public company disclosures. Ask a question, inspect the retrieved passages, and verify the original financial facts behind a calculation. When the selected filings cannot support an answer, the application says so.
 
-![Light research workspace](docs/screenshots/research-overview.png)
+![FinSight research desk](docs/screenshots/research-overview.png)
+
+The workspace keeps issuer selection and research history beside the question, with calculation results and source documents shown side by side.
 
 An analyst comparing two companies needs more than a fluent answer. They need to know which filing was used, what period a number covers, whether the units match, and how a ratio was calculated. FinSight makes those decisions visible.
 
@@ -95,7 +97,7 @@ These measurements describe the declared corpus and curated cases. They do not e
 
 ## Screenshots of the working application
 
-All screenshots below were captured from the running local application with the checked-in public filings. The interface is light throughout, including navigation. No mocked dashboard numbers or generated UI images are used.
+All screenshots below were captured from the running local application with the checked-in public filings. The research desk uses navy navigation, a light document canvas, ruled result rows, and a separate evidence inspector. All numbers and source passages come from the local corpus.
 
 ### Financial comparison and calculation provenance
 

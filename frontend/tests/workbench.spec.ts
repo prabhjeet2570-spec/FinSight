@@ -1,13 +1,13 @@
 import {test,expect} from '@playwright/test'
 
-test('light workspace loads without contacting external services',async({page})=>{
+test('research workspace loads without contacting external services',async({page})=>{
  const external:string[]=[],errors:string[]=[]
  page.on('request',req=>{if(!req.url().startsWith('http://127.0.0.1:8000'))external.push(req.url())})
  page.on('pageerror',e=>errors.push(e.message))
  await page.goto('/')
  await expect(page.getByText('Corpus ready',{exact:true})).toBeVisible()
- await expect(page.getByRole('heading',{name:'Every answer begins with evidence.'})).toBeVisible()
- expect(await page.locator('.sidebar').evaluate(e=>getComputedStyle(e).backgroundColor)).toBe('rgb(238, 241, 232)')
+ await expect(page.getByRole('heading',{name:'Company filing research'})).toBeVisible()
+ expect(await page.locator('.sidebar').evaluate(e=>getComputedStyle(e).backgroundColor)).toBe('rgb(24, 43, 67)')
  expect(external).toEqual([]);expect(errors).toEqual([])
 })
 
@@ -19,7 +19,7 @@ test('comparison exposes independent operands, periods and original source',asyn
  await expect(page.getByText('44.64%',{exact:true})).toBeVisible()
  await expect(page.getByText(/different fiscal year ends/)).toBeVisible()
  await page.getByRole('tab',{name:/Calculations/}).click()
- await expect(page.getByText('Inspect the calculation.')).toBeVisible()
+ await expect(page.getByRole('heading',{name:'Calculations',exact:true})).toBeVisible()
  await page.locator('.operand-list button').first().click()
  await expect(page.getByText('Source inspector',{exact:true})).toBeVisible()
  await expect(page.getByText('0000320193-24-000123',{exact:true})).toBeVisible()
@@ -45,17 +45,17 @@ test('source extracts retain exact citations and retrieval details',async({page}
  await page.locator('.citation').first().click()
  await expect(page.getByText('Source inspector',{exact:true})).toBeVisible()
  await page.getByRole('tab',{name:'Retrieval details'}).click()
- await expect(page.getByText('A visible research trail.')).toBeVisible()
+ await expect(page.getByRole('heading',{name:'Retrieval details',exact:true})).toBeVisible()
  await expect(page.getByText(/not calibrated answer-confidence/)).toBeVisible()
 })
 
 test('recorded evaluation and library are usable',async({page})=>{
  await page.goto('/')
  await page.getByRole('button',{name:/Filing library/}).click()
- await expect(page.getByRole('heading',{name:'A library you can inspect.'})).toBeVisible()
+ await expect(page.getByRole('heading',{name:'Filing library'})).toBeVisible()
  await expect(page.locator('.filing-card')).toHaveCount(3)
  await page.getByRole('button',{name:'Evaluation',exact:true}).click()
- await expect(page.getByRole('heading',{name:'Evidence for the evidence.'})).toBeVisible()
+ await expect(page.getByRole('heading',{name:'Evaluation results'})).toBeVisible()
  await expect(page.getByText('Hybrid + cross-encoder',{exact:false})).toBeVisible()
  await page.getByText('Inspect retrieval misses',{exact:true}).click()
  await expect(page.locator('.failure-details')).toHaveAttribute('open','')
